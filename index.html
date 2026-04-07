@@ -20,6 +20,15 @@
   </head>
 
   <body>
+    <!-- Error Catcher -->
+    <script>
+      window.addEventListener('error', function(e) {
+        document.body.innerHTML = '<div style="color:red;font-size:20px;padding:20px;"><b>Global Error:</b> ' + e.message + '<br/><pre>' + e.error?.stack + '</pre></div>';
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        document.body.innerHTML = '<div style="color:red;font-size:20px;padding:20px;"><b>Unhandled Promise:</b> ' + e.reason + '</div>';
+      });
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

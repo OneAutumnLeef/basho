@@ -1,7 +1,8 @@
 export interface Place {
   id: string;
+  originalId?: string;
   name: string;
-  description: string;
+  description?: string;
   lat: number;
   lng: number;
   address: string;
@@ -15,14 +16,14 @@ export interface Place {
 }
 
 export type PlaceCategory = 
-  | "restaurant" 
-  | "cafe" 
-  | "hotel" 
+  | "accommodation" 
+  | "dining" 
   | "attraction" 
-  | "nightlife" 
-  | "shopping" 
+  | "transport" 
+  | "cafe" 
   | "nature" 
-  | "museum";
+  | "historic" 
+  | "other";
 
 export interface TripBucketItem {
   id: string;
@@ -42,23 +43,23 @@ export interface Trip {
 export type MapView = "my-places" | "friends" | "public";
 
 export const CATEGORY_COLORS: Record<PlaceCategory, string> = {
-  restaurant: "#f97316",
+  dining: "#f97316",
   cafe: "#a855f7",
-  hotel: "#3b82f6",
+  accommodation: "#3b82f6",
   attraction: "#14b8a6",
-  nightlife: "#ec4899",
-  shopping: "#eab308",
+  historic: "#ec4899",
+  transport: "#eab308",
   nature: "#22c55e",
-  museum: "#8b5cf6",
+  other: "#8b5cf6",
 };
 
 export const CATEGORY_ICONS: Record<PlaceCategory, string> = {
-  restaurant: "🍽️",
+  dining: "🍽️",
   cafe: "☕",
-  hotel: "🏨",
+  accommodation: "🏨",
   attraction: "🏛️",
-  nightlife: "🌙",
-  shopping: "🛍️",
+  historic: "🏛️",
+  transport: "🚄",
   nature: "🌿",
-  museum: "🎨",
+  other: "📍",
 };

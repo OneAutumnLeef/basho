@@ -12,9 +12,8 @@ export default defineConfig(({ mode }) => ({
       overlay: false,
     },
   },
-  optimizeDeps: {
-    exclude: ["react-leaflet", "@react-leaflet/core"],
-  },
+  base: "/basho/",
+  // optimizeDeps removed to fix react-dom createPortal issue
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
     alias: {
