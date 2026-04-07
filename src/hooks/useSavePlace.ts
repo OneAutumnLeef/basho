@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { getAuthRedirectUrl } from "@/lib/app-url";
 import { Place } from "@/types/places";
 
 export function useSavePlace() {
@@ -15,7 +16,7 @@ export function useSavePlace() {
         const { error: authError } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
-            redirectTo: window.location.href.split('#')[0].split('?')[0] // Return to current page without hash/params
+            redirectTo: getAuthRedirectUrl(),
           }
         });
         

@@ -77,7 +77,7 @@ VITE_GOOGLE_MAPS_API_KEY=<your-google-maps-api-key>
 npm run dev
 ```
 
-Navigate to `http://localhost:8080/basho/`
+Navigate to `http://localhost:3000/`
 
 ---
 
@@ -109,8 +109,10 @@ The Map ID for the custom dark vector style is configured at: **Maps Platform �
 1. Go to Google Cloud Console → APIs & Services → Credentials
 2. Create an OAuth 2.0 Client ID (Web Application)
 3. Add `https://<your-project>.supabase.co/auth/v1/callback` as an Authorized Redirect URI
-4. In Supabase Dashboard → Authentication → Providers → Google, paste the Client ID and Secret
-5. Enable the provider and save
+4. In Supabase Dashboard → Authentication → URL Configuration, add `http://localhost:3000/` as a Redirect URL for local development
+5. Add your production app URL `https://derajyojith.dev/basho/` as a Redirect URL as well
+6. In Supabase Dashboard → Authentication → Providers → Google, paste the Client ID and Secret
+7. Enable the provider and save
 
 ---
 
@@ -122,7 +124,7 @@ The app is configured to deploy to `derajyojith.dev/basho` via GitHub Pages.
 git push origin main   # triggers GitHub Actions automatically
 ```
 
-Vite `base` is set to `/basho/` and React Router has a matching `basename="/basho/"`.
+Vite and React Router use `/` in development and `/basho/` in production builds so local auth redirects stay on `localhost:3000` while GitHub Pages still deploys under the project subpath.
 
 ---
 

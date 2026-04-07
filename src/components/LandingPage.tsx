@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowUp, Sparkles } from "lucide-react";
 import { useState } from "react";
+import { getAssetUrl } from "@/lib/app-url";
 
 interface LandingPageProps {
   onStart: () => void;
@@ -68,7 +69,7 @@ export default function LandingPage({ onStart }: LandingPageProps) {
               className="w-[120vw] max-w-none"
               style={{ mixBlendMode: "multiply", marginTop: "-40px" }}
             >
-              <source src="/basho/brush.mp4" type="video/mp4" />
+              <source src={getAssetUrl("brush.mp4")} type="video/mp4" />
             </video>
           </motion.div>
         )}
