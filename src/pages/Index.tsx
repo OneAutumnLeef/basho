@@ -214,6 +214,7 @@ const Index = () => {
           place={selectedPlace}
           isOpen={!!selectedPlace}
           onClose={() => setSelectedPlace(null)}
+          onSave={handleSavePlace}
         />
       </div>
 

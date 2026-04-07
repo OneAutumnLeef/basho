@@ -1,5 +1,5 @@
 import { Place, CATEGORY_ICONS, CATEGORY_COLORS } from "@/types/places";
-import { X, MapPin, Star, Tag, Link2, MessageSquare, Instagram, Edit3 } from "lucide-react";
+import { X, MapPin, Star, Tag, Link2, MessageSquare, Instagram, Edit3, Bookmark, BookmarkCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { useState } from "react";
 
@@ -7,11 +7,20 @@ interface PlaceDetailModalProps {
   place: Place | null;
   isOpen: boolean;
   onClose: () => void;
+  onSave?: (place: Place) => void;
+  isSaving?: boolean;
   onUpdate?: (place: Place) => void;
 }
 
-export default function PlaceDetailModal({ place, isOpen, onClose, onUpdate }: PlaceDetailModalProps) {
+export default function PlaceDetailModal({ place, isOpen, onClose, onSave, isSaving }: PlaceDetailModalProps) {
   const [activeTab, setActiveTab] = useState<"details" | "media" | "notes">("details");
+  const [saved, setSaved] = useState(false);
+
+  const handleSave = () => {
+    if (!place || !onSave) return;
+    onSave(place);
+    setSaved(true);
+  };
 
   if (!place) return null;
 
@@ -55,11 +64,44 @@ export default function PlaceDetailModal({ place, isOpen, onClose, onUpdate }: P
           </div>
           
           {place.rating && (
-            <div className="mt-3 flex items-center gap-1.5">
+            <div className="mt-3 flex items-center justify-between">
               <span className="flex items-center gap-1 text-sm font-bold text-warning bg-warning/10 px-2.5 py-1 rounded-lg ring-1 ring-warning/20">
                 <Star className="h-4 w-4 fill-current" />
                 {place.rating}
               </span>
+              {/* Save Button */}
+              {onSave && (
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all active:scale-95 ${
+                    saved
+                      ? "bg-green-500/20 text-green-400 ring-1 ring-green-500/30"
+                      : "bg-primary/20 text-primary ring-1 ring-primary/30 hover:bg-primary/30"
+                  } disabled:opacity-50`}
+                >
+                  {saved ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
+                  {isSaving ? "Saving..." : saved ? "Saved!" : "Save Place"}
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Save button when no rating */}
+          {!place.rating && onSave && (
+            <div className="mt-3">
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-all active:scale-95 ${
+                  saved
+                    ? "bg-green-500/20 text-green-400 ring-1 ring-green-500/30"
+                    : "bg-primary/20 text-primary ring-1 ring-primary/30 hover:bg-primary/30"
+                } disabled:opacity-50`}
+              >
+                {saved ? <BookmarkCheck className="h-4 w-4" /> : <Bookmark className="h-4 w-4" />}
+                {isSaving ? "Saving..." : saved ? "Saved!" : "Save Place"}
+              </button>
             </div>
           )}
 
