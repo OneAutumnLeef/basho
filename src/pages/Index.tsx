@@ -64,9 +64,17 @@ const Index = () => {
     return filtered;
   }, [dbPlaces, trendingPlaces, selectedTags, isSearchMode, searchResults, activeView]);
 
-  // Using the hook to fetch a route based on the bucket items
+  // Route — only fetch when user explicitly requests it
+  const [showRoute, setShowRoute] = useState(false);
   const bucketPlaces = bucketItems.map(item => item.place);
-  const { data: routeData, isLoading: isLoadingRoute } = useRoute(bucketPlaces);
+  const { data: routeData, isLoading: isLoadingRoute, refetch: refetchRoute } = useRoute(
+    showRoute ? bucketPlaces : []
+  );
+
+  const handleOptimizeRoute = useCallback(() => {
+    setShowRoute(true);
+    refetchRoute();
+  }, [refetchRoute]);
 
   const handleTagToggle = useCallback((tag: string) => {
     setSelectedTags((prev) =>
@@ -196,6 +204,8 @@ const Index = () => {
             isOpen={bucketOpen}
             onToggle={() => setBucketOpen(false)}
             routeData={routeData}
+            onOptimizeRoute={handleOptimizeRoute}
+            isLoadingRoute={isLoadingRoute}
           />
         </div>
         

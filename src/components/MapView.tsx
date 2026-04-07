@@ -4,6 +4,25 @@ import { Place, CATEGORY_COLORS, CATEGORY_ICONS } from "@/types/places";
 const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const GOOGLE_MAP_ID = "d92a874bf13d983229168fd9";
 
+// Force dark style in code regardless of cloud config
+const DARK_MAP_STYLE = [
+  { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#9ca3af" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
+  { featureType: "administrative", elementType: "geometry", stylers: [{ color: "#374151" }] },
+  { featureType: "landscape", stylers: [{ color: "#1f2937" }] },
+  { featureType: "poi", stylers: [{ color: "#1f2937" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#1a2e1a" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#374151" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#111827" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#6b7280" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#4b5563" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#9ca3af" }] },
+  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#2d3748" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0d1b2a" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#374151" }] },
+];
+
 interface MapViewProps {
   places: Place[];
   onPlaceClick?: (place: Place) => void;
@@ -53,6 +72,9 @@ export default function MapView({ places, onPlaceClick, selectedPlaceId, routeDa
         streetViewControl: false,
         fullscreenControl: false,
       });
+
+      // Force dark style override in code (mapId cloud styles can vary; this is always applied)
+      mapInstanceRef.current.setOptions({ styles: DARK_MAP_STYLE });
     }
 
     init();

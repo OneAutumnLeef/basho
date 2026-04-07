@@ -25,6 +25,8 @@ interface TripBucketProps {
   isOpen: boolean;
   onToggle: () => void;
   routeData?: any;
+  onOptimizeRoute: () => void;
+  isLoadingRoute?: boolean;
 }
 
 function SortableItem({ item, onRemove }: { item: TripBucketItem; onRemove: () => void }) {
@@ -69,7 +71,7 @@ function SortableItem({ item, onRemove }: { item: TripBucketItem; onRemove: () =
   );
 }
 
-export default function TripBucket({ items, onReorder, onRemove, isOpen, onToggle, routeData }: TripBucketProps) {
+export default function TripBucket({ items, onReorder, onRemove, isOpen, onToggle, routeData, onOptimizeRoute, isLoadingRoute }: TripBucketProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
@@ -182,9 +184,16 @@ export default function TripBucket({ items, onReorder, onRemove, isOpen, onToggl
           {/* Generate Route Button */}
           {items.length > 1 && (
             <div className="p-5 border-t border-white/10 bg-black/20">
-              <button className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground shadow-[0_0_20px_rgba(var(--primary),0.3)] transition-all hover:bg-primary/90 hover:shadow-[0_0_30px_rgba(var(--primary),0.5)] active:scale-[0.98]">
-                <Navigation className="h-4 w-4" />
-                Generate Optimized Route
+              <button
+                onClick={onOptimizeRoute}
+                disabled={isLoadingRoute}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground shadow-[0_0_20px_rgba(var(--primary),0.3)] transition-all hover:bg-primary/90 hover:shadow-[0_0_30px_rgba(var(--primary),0.5)] active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isLoadingRoute ? (
+                  <><span className="animate-spin h-4 w-4 border-2 border-white/30 border-t-white rounded-full" /> Calculating...</>
+                ) : (
+                  <><Navigation className="h-4 w-4" /> Generate Optimized Route</>
+                )}
               </button>
             </div>
           )}
