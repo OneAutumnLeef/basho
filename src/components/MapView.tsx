@@ -64,7 +64,7 @@ export default function MapView({ places, onPlaceClick, selectedPlaceId, routeDa
       mapInstanceRef.current = new google.maps.Map(mapRef.current, {
         center,
         zoom: 13,
-        mapId: GOOGLE_MAP_ID,
+        styles: DARK_MAP_STYLE,
         disableDefaultUI: true,
         gestureHandling: "greedy",
         zoomControl: false,
@@ -72,9 +72,6 @@ export default function MapView({ places, onPlaceClick, selectedPlaceId, routeDa
         streetViewControl: false,
         fullscreenControl: false,
       });
-
-      // Force dark style override in code (mapId cloud styles can vary; this is always applied)
-      mapInstanceRef.current.setOptions({ styles: DARK_MAP_STYLE });
     }
 
     init();
@@ -97,33 +94,35 @@ export default function MapView({ places, onPlaceClick, selectedPlaceId, routeDa
         const color = CATEGORY_COLORS[place.category];
         const icon = CATEGORY_ICONS[place.category];
         const scale = isSelected ? 1.4 : 1;
+        const shadow = isSelected
+          ? `drop-shadow(0 0 8px ${color})`
+          : `drop-shadow(0 4px 6px rgba(0,0,0,0.5))`;
 
-        const markerEl = document.createElement("div");
-        markerEl.style.cssText = `
-          background: ${color};
-          width: 36px;
-          height: 36px;
-          border-radius: 50% 50% 50% 0;
-          transform: rotate(-45deg) scale(${scale});
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: ${isSelected ? `0 12px 24px ${color}80, 0 0 0 4px ${color}40` : '0 4px 12px rgba(0,0,0,0.4)'};
-          border: ${isSelected ? '3px solid rgba(255,255,255,0.9)' : '2px solid rgba(255,255,255,0.3)'};
-          cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-        `;
+        // Custom SVG teardrop pin
+        const svgIcon = {
+          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+            <svg xmlns="http://www.w3.org/2000/svg" width="${44 * scale}" height="${52 * scale}" viewBox="0 0 44 52">
+              <path d="M22 2C13.163 2 6 9.163 6 18c0 12 16 32 16 32s16-20 16-32C38 9.163 30.837 2 22 2z" 
+                fill="${color}" 
+                stroke="${isSelected ? 'white' : 'rgba(255,255,255,0.4)'}" 
+                stroke-width="${isSelected ? 2.5 : 1.5}"
+                filter="url(#shadow)"/>
+              <circle cx="22" cy="18" r="9" fill="rgba(0,0,0,0.35)"/>
+              <text x="22" y="23" text-anchor="middle" font-size="11" font-family="system-ui">
+                ${CATEGORY_ICONS[place.category]}
+              </text>
+              ${isSelected ? `<circle cx="22" cy="18" r="13" fill="none" stroke="${color}" stroke-width="2" opacity="0.5"/>` : ''}
+            </svg>`)}`,
+          scaledSize: new google.maps.Size(44 * scale, 52 * scale),
+          anchor: new google.maps.Point(22 * scale, 52 * scale),
+        };
 
-        const inner = document.createElement("span");
-        inner.style.cssText = "transform: rotate(45deg); font-size: 15px; line-height: 1; pointer-events: none;";
-        inner.textContent = icon;
-        markerEl.appendChild(inner);
-
-        const marker = new google.maps.marker.AdvancedMarkerElement({
+        const marker = new google.maps.Marker({
           position: { lat: place.lat, lng: place.lng },
           map,
-          content: markerEl,
+          icon: svgIcon,
           zIndex: isSelected ? 1000 : 1,
+          title: place.name,
         });
 
         marker.addListener("click", () => onPlaceClick?.(place));
