@@ -58,10 +58,17 @@ export default function PlacesSidebar({
     <div className="flex h-full w-full flex-col bg-black/40 backdrop-blur-2xl">
       {/* Header */}
       <div className="px-6 pt-8 pb-5 bg-gradient-to-b from-black/60 to-transparent">
-        <h1 className="text-2xl font-heading font-bold text-white tracking-wide">
-          Wanderlens
-        </h1>
-        <p className="text-sm text-white/50 mt-1 uppercase tracking-widest font-semibold">Your world, pinned.</p>
+        <div className="flex items-center gap-3">
+          <img 
+            src="https://images.prismic.io/derajportfolio/adV7P-zlhpBNhbdU_basho.png?auto=format,compress" 
+            alt="Basho" 
+            className="h-9 w-9 object-contain"
+          />
+          <h1 className="text-2xl font-heading font-bold text-white tracking-wide">
+            Basho
+          </h1>
+        </div>
+        <p className="text-sm text-white/50 mt-1 uppercase tracking-widest font-semibold">Trip planning made easy.</p>
       </div>
 
       {/* View Toggle */}
