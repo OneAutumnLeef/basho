@@ -6,20 +6,22 @@ const GOOGLE_MAP_ID = "d92a874bf13d983229168fd9";
 
 // Force dark style in code regardless of cloud config
 const DARK_MAP_STYLE = [
-  { elementType: "geometry", stylers: [{ color: "#11111d" }] },
+  { elementType: "geometry", stylers: [{ color: "#1a1a2e" }] },
   { elementType: "labels.text.fill", stylers: [{ color: "#9ca3af" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#11111d" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#1a1a2e" }] },
   { featureType: "administrative", elementType: "geometry", stylers: [{ visibility: "off" }] },
   { featureType: "administrative.country", elementType: "geometry.stroke", stylers: [{ visibility: "off" }] },
   { featureType: "administrative.province", elementType: "geometry.stroke", stylers: [{ visibility: "off" }] },
-  { featureType: "landscape", stylers: [{ color: "#11111d" }] },
+  { featureType: "landscape", stylers: [{ color: "#1f2937" }] },
   { featureType: "poi", stylers: [{ visibility: "off" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#1f1f2e" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#11111d", visibility: "off" }] },
-  { featureType: "road", elementType: "labels", stylers: [{ visibility: "simplified" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#2d2d3f" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#374151" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ visibility: "off" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#6b7280" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#4b5563" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#9ca3af" }] },
   { featureType: "transit", stylers: [{ visibility: "off" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0a0a0f" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#0d1b2a" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#374151" }] },
 ];
 
 interface MapViewProps {

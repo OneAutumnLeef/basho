@@ -32,12 +32,22 @@ const Index = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
+  // Search debouncing
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedQuery(searchQuery);
     }, 500);
     return () => clearTimeout(handler);
   }, [searchQuery]);
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Auth event:", event, session?.user?.email);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const { data: searchResults = [], isLoading: isSearching } = usePlaceSearch(debouncedQuery);
   const isSearchMode = debouncedQuery.length >= 3;
