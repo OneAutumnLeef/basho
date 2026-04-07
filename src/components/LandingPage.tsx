@@ -11,7 +11,8 @@ export default function LandingPage({ onStart }: LandingPageProps) {
 
   return (
     <motion.div
-      className={`absolute inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden transition-colors duration-700 ${brushMode ? "bg-white" : "bg-black"}`}
+      className={`absolute inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden transition-colors duration-700`}
+      style={{ background: brushMode ? "#f6f6f6" : "#000000" }}
       initial={{ y: 0 }}
       exit={{ y: "-100vh", opacity: 0, transition: { duration: 1, ease: [0.76, 0, 0.24, 1] } }}
     >
@@ -61,11 +62,11 @@ export default function LandingPage({ onStart }: LandingPageProps) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.6 }}
           >
-            {/* Video centered over text — slightly wider than the heading */}
+            {/* Video centered over text — covers heading + tagline */}
             <video
               autoPlay muted playsInline
-              className="w-[700px] max-w-[90vw]"
-              style={{ mixBlendMode: "multiply", marginTop: "-60px" }}
+              className="w-[120vw] max-w-none"
+              style={{ mixBlendMode: "multiply", marginTop: "-40px" }}
             >
               <source src="/basho/brush.mp4" type="video/mp4" />
             </video>
@@ -77,7 +78,7 @@ export default function LandingPage({ onStart }: LandingPageProps) {
       <div className="relative z-10 flex flex-col items-center text-center px-4">
         <motion.h1
           className="text-7xl md:text-9xl font-black tracking-tighter mb-4"
-          style={{ color: brushMode ? "#ffffff" : "transparent",
+          style={{ color: brushMode ? "#f6f6f6" : "transparent",
             backgroundImage: brushMode ? "none" : "linear-gradient(135deg, white, white, rgba(255,255,255,0.4))",
             WebkitBackgroundClip: brushMode ? "unset" : "text",
             backgroundClip: brushMode ? "unset" : "text",
@@ -91,7 +92,7 @@ export default function LandingPage({ onStart }: LandingPageProps) {
 
         <motion.p
           className="text-xl md:text-2xl font-medium max-w-lg mb-12"
-          style={{ color: brushMode ? "#ffffff" : "rgba(255,255,255,0.7)" }}
+          style={{ color: brushMode ? "#f6f6f6" : "rgba(255,255,255,0.7)" }}
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, ease: "easeOut", delay: 0.5 }}
