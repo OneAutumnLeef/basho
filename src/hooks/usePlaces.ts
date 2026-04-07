@@ -6,9 +6,7 @@ export function usePlaces() {
   return useQuery({
     queryKey: ["places"],
     queryFn: async () => {
-      // If we don't have a real Supabase URL initialized, return empty
-      if (!import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL === 'https://placeholder-url.supabase.co') {
-        console.warn('Supabase URL not provided, returning empty array.');
+      if (!import.meta.env.VITE_SUPABASE_URL) {
         return [];
       }
 
