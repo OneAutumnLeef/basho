@@ -12,7 +12,7 @@ export default function LandingPage({ onStart }: LandingPageProps) {
   return (
     <motion.div
       className={`absolute inset-0 z-[9999] flex flex-col items-center justify-center overflow-hidden transition-colors duration-700`}
-      style={{ background: brushMode ? "#f6f6f6" : "#000000" }}
+      style={{ background: brushMode ? "#ffffff" : "#000000" }}
       initial={{ y: 0 }}
       exit={{ y: "-100vh", opacity: 0, transition: { duration: 1, ease: [0.76, 0, 0.24, 1] } }}
     >
@@ -78,7 +78,7 @@ export default function LandingPage({ onStart }: LandingPageProps) {
       <div className="relative z-10 flex flex-col items-center text-center px-4">
         <motion.h1
           className="text-7xl md:text-9xl font-black tracking-tighter mb-4"
-          style={{ color: brushMode ? "#f6f6f6" : "transparent",
+          style={{ color: brushMode ? "#ffffff" : "transparent",
             backgroundImage: brushMode ? "none" : "linear-gradient(135deg, white, white, rgba(255,255,255,0.4))",
             WebkitBackgroundClip: brushMode ? "unset" : "text",
             backgroundClip: brushMode ? "unset" : "text",
@@ -92,7 +92,7 @@ export default function LandingPage({ onStart }: LandingPageProps) {
 
         <motion.p
           className="text-xl md:text-2xl font-medium max-w-lg mb-12"
-          style={{ color: brushMode ? "#f6f6f6" : "rgba(255,255,255,0.7)" }}
+          style={{ color: brushMode ? "#ffffff" : "rgba(255,255,255,0.7)" }}
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, ease: "easeOut", delay: 0.5 }}
