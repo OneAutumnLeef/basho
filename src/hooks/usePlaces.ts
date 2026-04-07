@@ -1,16 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Place } from "@/types/places";
-import { mockPlaces } from "@/data/mockPlaces";
 
 export function usePlaces() {
   return useQuery({
     queryKey: ["places"],
     queryFn: async () => {
-      // If we don't have a real Supabase URL initialized, fallback to mock data
+      // If we don't have a real Supabase URL initialized, return empty
       if (!import.meta.env.VITE_SUPABASE_URL || import.meta.env.VITE_SUPABASE_URL === 'https://placeholder-url.supabase.co') {
-        console.warn('Supabase URL not provided, falling back to mock places.');
-        return mockPlaces;
+        console.warn('Supabase URL not provided, returning empty array.');
+        return [];
       }
 
       const { data, error } = await supabase
@@ -23,10 +22,8 @@ export function usePlaces() {
         throw error;
       }
 
-      // If database is completely empty, we can still provide mock data for testing
       if (!data || data.length === 0) {
-        console.warn('Database is empty, providing mock fallback.');
-        return mockPlaces;
+        return [];
       }
 
       // Map Supabase rows to our precise frontend Place type

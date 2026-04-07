@@ -12,14 +12,17 @@ import { usePlaces } from "@/hooks/usePlaces";
 import { usePlaceSearch } from "@/hooks/usePlaceSearch";
 import { useSavePlace } from "@/hooks/useSavePlace";
 import { supabase } from "@/integrations/supabase/client";
+import { useTrendingPlaces } from "@/hooks/useTrendingPlaces";
 import { DndContext, DragEndEvent, DragStartEvent, DragOverlay, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { AnimatePresence } from "framer-motion";
 
 const Index = () => {
   const { data: dbPlaces = [], isLoading: isLoadingPlaces } = usePlaces();
+  const { data: trendingPlaces = [], isLoading: isTrending } = useTrendingPlaces();
   const { mutate: savePlaceMutation } = useSavePlace();
+  
   const [hasLanded, setHasLanded] = useState(false);
-  const [activeView, setActiveView] = useState<MapViewType>("my-places");
+  const [activeView, setActiveView] = useState<MapViewType>("public");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
   const [bucketItems, setBucketItems] = useState<TripBucketItem[]>([]);
@@ -42,16 +45,15 @@ const Index = () => {
   // Final places to render on the map and sidebar
   const displayedPlaces = useMemo(() => {
     if (isSearchMode) return searchResults;
-    let filtered = dbPlaces;
+    let filtered: Place[] = [];
     
     // Simulate activeView logic - in a complete backend, this would query different Supabase tables/views
     if (activeView === "friends") {
       filtered = []; // You have no friends yet :( 
     } else if (activeView === "my-places") {
-      // Show everything that is yours
       filtered = dbPlaces;
     } else if (activeView === "public") {
-      filtered = dbPlaces; // Assuming mock data is public out of the box
+      filtered = trendingPlaces; // Inject 5 random Google Places
     }
 
     if (selectedTags.length > 0) {
@@ -60,7 +62,7 @@ const Index = () => {
       );
     }
     return filtered;
-  }, [dbPlaces, selectedTags, isSearchMode, searchResults, activeView]);
+  }, [dbPlaces, trendingPlaces, selectedTags, isSearchMode, searchResults, activeView]);
 
   // Using the hook to fetch a route based on the bucket items
   const bucketPlaces = bucketItems.map(item => item.place);
