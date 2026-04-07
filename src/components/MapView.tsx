@@ -71,6 +71,8 @@ export default function MapView({ places, onPlaceClick, selectedPlaceId, routeDa
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
+        backgroundColor: "#1a1a2e",
+        clickableIcons: false,
       });
     }
 

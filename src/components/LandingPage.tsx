@@ -124,6 +124,30 @@ export default function LandingPage({ onStart }: LandingPageProps) {
           Explore
         </motion.span>
       </div>
+
+      {/* Credits */}
+      <motion.div
+        className="absolute bottom-6 left-0 right-0 flex justify-center"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1, delay: 1.8 }}
+      >
+        <p className={`text-[11px] font-medium tracking-widest uppercase transition-colors duration-700 ${
+          brushMode ? "text-black/25" : "text-white/25"
+        }`}>
+          Built by{" "}
+          <a
+            href="https://derajyojith.dev"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`underline underline-offset-2 transition-colors ${
+              brushMode ? "hover:text-black/50" : "hover:text-white/50"
+            }`}
+          >
+            Deraj Yojith
+          </a>
+        </p>
+      </motion.div>
     </motion.div>
   );
 }
