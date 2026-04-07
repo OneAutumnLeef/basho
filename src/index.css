@@ -68,23 +68,13 @@
   }
 }
 
-/* Leaflet overrides for dark theme */
-.leaflet-container {
-  background: hsl(220 20% 7%) !important;
+/* Google Maps background to match theme and prevent grid flash */
+.gm-style {
+  background: #11111d !important;
 }
 
-.leaflet-tile-pane {
-  filter: brightness(0.7) contrast(1.1) saturate(0.8);
-}
-
-.leaflet-control-zoom a {
-  background: hsl(220 18% 12%) !important;
-  color: hsl(210 20% 92%) !important;
-  border-color: hsl(220 15% 18%) !important;
-}
-
-.leaflet-control-zoom a:hover {
-  background: hsl(220 15% 16%) !important;
+.gm-style div {
+  border: none !important;
 }
 
 /* Custom scrollbar */

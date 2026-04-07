@@ -78,7 +78,8 @@ export default function LandingPage({ onStart }: LandingPageProps) {
       <div className="relative z-10 flex flex-col items-center text-center px-4">
         <motion.h1
           className="text-7xl md:text-9xl font-black tracking-tighter mb-4"
-          style={{ color: brushMode ? "#ffffff" : "transparent",
+          style={{
+            color: brushMode ? "#ffffff" : "transparent",
             backgroundImage: brushMode ? "none" : "linear-gradient(135deg, white, white, rgba(255,255,255,0.4))",
             WebkitBackgroundClip: brushMode ? "unset" : "text",
             backgroundClip: brushMode ? "unset" : "text",
@@ -102,9 +103,8 @@ export default function LandingPage({ onStart }: LandingPageProps) {
 
         <motion.button
           onClick={onStart}
-          className={`group relative flex h-16 w-16 items-center justify-center rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 ${
-            brushMode ? "bg-black text-white" : "bg-white text-black"
-          }`}
+          className={`group relative flex h-16 w-16 items-center justify-center rounded-full shadow-2xl transition-all hover:scale-110 active:scale-95 ${brushMode ? "bg-black text-white" : "bg-white text-black"
+            }`}
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.8, ease: "easeOut", delay: 0.8 }}
@@ -114,9 +114,8 @@ export default function LandingPage({ onStart }: LandingPageProps) {
         </motion.button>
 
         <motion.span
-          className={`mt-4 text-xs font-bold uppercase tracking-widest transition-colors duration-700 ${
-            brushMode ? "text-black/30" : "text-white/40"
-          }`}
+          className={`mt-4 text-xs font-bold uppercase tracking-widest transition-colors duration-700 ${brushMode ? "text-black/30" : "text-white/40"
+            }`}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1, delay: 1.2 }}
@@ -132,17 +131,15 @@ export default function LandingPage({ onStart }: LandingPageProps) {
         animate={{ opacity: 1 }}
         transition={{ duration: 1, delay: 1.8 }}
       >
-        <p className={`text-[11px] font-medium tracking-widest uppercase transition-colors duration-700 ${
-          brushMode ? "text-black/25" : "text-white/25"
-        }`}>
+        <p className={`text-[11px] font-medium tracking-widest uppercase transition-colors duration-700 ${brushMode ? "text-black/25" : "text-white/25"
+          }`}>
           Built by{" "}
           <a
             href="https://derajyojith.dev"
             target="_blank"
             rel="noopener noreferrer"
-            className={`underline underline-offset-2 transition-colors ${
-              brushMode ? "hover:text-black/50" : "hover:text-white/50"
-            }`}
+            className={`underline underline-offset-2 transition-colors ${brushMode ? "hover:text-black/50" : "hover:text-white/50"
+              }`}
           >
             Deraj Yojith
           </a>

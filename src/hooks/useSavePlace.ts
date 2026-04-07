@@ -15,7 +15,7 @@ export function useSavePlace() {
         const { error: authError } = await supabase.auth.signInWithOAuth({
           provider: 'google',
           options: {
-            redirectTo: window.location.origin
+            redirectTo: window.location.href.split('#')[0].split('?')[0] // Return to current page without hash/params
           }
         });
         
