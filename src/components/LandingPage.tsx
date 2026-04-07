@@ -61,10 +61,11 @@ export default function LandingPage({ onStart }: LandingPageProps) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.6 }}
           >
+            {/* Video centered over text — slightly wider than the heading */}
             <video
               autoPlay muted playsInline
-              className="absolute w-full object-cover opacity-90"
-              style={{ mixBlendMode: "multiply" }}
+              className="w-[700px] max-w-[90vw]"
+              style={{ mixBlendMode: "multiply", marginTop: "-60px" }}
             >
               <source src="/basho/brush.mp4" type="video/mp4" />
             </video>
@@ -75,11 +76,12 @@ export default function LandingPage({ onStart }: LandingPageProps) {
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center text-center px-4">
         <motion.h1
-          className={`text-7xl md:text-9xl font-black tracking-tighter mb-4 transition-colors duration-700 ${
-            brushMode
-              ? "text-black/80"
-              : "text-transparent bg-clip-text bg-gradient-to-br from-white via-white to-white/40"
-          }`}
+          className="text-7xl md:text-9xl font-black tracking-tighter mb-4"
+          style={{ color: brushMode ? "#ffffff" : "transparent",
+            backgroundImage: brushMode ? "none" : "linear-gradient(135deg, white, white, rgba(255,255,255,0.4))",
+            WebkitBackgroundClip: brushMode ? "unset" : "text",
+            backgroundClip: brushMode ? "unset" : "text",
+          }}
           initial={{ opacity: 0, y: 50, filter: "blur(10px)" }}
           animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
           transition={{ duration: 1.2, ease: "easeOut", delay: 0.2 }}
@@ -88,9 +90,8 @@ export default function LandingPage({ onStart }: LandingPageProps) {
         </motion.h1>
 
         <motion.p
-          className={`text-xl md:text-2xl font-medium max-w-lg mb-12 transition-colors duration-700 ${
-            brushMode ? "text-black/50" : "text-white/70"
-          }`}
+          className="text-xl md:text-2xl font-medium max-w-lg mb-12"
+          style={{ color: brushMode ? "#ffffff" : "rgba(255,255,255,0.7)" }}
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, ease: "easeOut", delay: 0.5 }}
