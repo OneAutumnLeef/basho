@@ -64,7 +64,7 @@ export default function LandingPage({ onStart }: LandingPageProps) {
           >
             {/* Video centered over text — covers heading + tagline */}
             <video
-              autoPlay muted playsInline
+              autoPlay loop muted playsInline
               className="w-[120vw] max-w-none"
               style={{ mixBlendMode: "multiply", marginTop: "-40px" }}
             >
