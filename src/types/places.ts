@@ -31,6 +31,83 @@ export interface TripBucketItem {
   order: number;
   day?: number;
   time?: string;
+  dwellMinutes?: number;
+}
+
+export type PlannerPace = "relaxed" | "balanced" | "packed";
+
+export type DiscoveryTimeWindow =
+  | "morning"
+  | "afternoon"
+  | "evening"
+  | "late-night";
+
+export type RouteMode = "fixed" | "optimize";
+
+export type TripWarningCode = "long_detour" | "tight_connection" | "late_finish";
+
+export interface PlannerSettings {
+  city: string;
+  vibe: string;
+  startTime: string;
+  timeWindow: DiscoveryTimeWindow;
+  pace: PlannerPace;
+}
+
+export interface DiscoveryContext {
+  city: string;
+  vibe: string;
+  timeWindow: DiscoveryTimeWindow;
+}
+
+export interface PlannedStop {
+  itemId: string;
+  place: Place;
+  order: number;
+  arrivalTime: string;
+  departureTime: string;
+  dwellMinutes: number;
+  travelMinutesFromPrevious: number;
+  warnings: TripWarningCode[];
+}
+
+export interface PlanScoreBreakdown {
+  overall: number;
+  feasibility: number;
+  pacing: number;
+  efficiency: number;
+  variety: number;
+  warningCount: number;
+}
+
+export interface AutoFixSuggestion {
+  itemId: string;
+  candidate: Place;
+  reason: string;
+  confidence: number;
+  estimatedScoreDelta: number;
+  warningCodes: TripWarningCode[];
+}
+
+export interface RouteLegData {
+  distance: number;
+  duration: number;
+  fromIndex: number;
+  toIndex: number;
+  fromPlaceId?: string;
+  toPlaceId?: string;
+}
+
+export interface RouteData {
+  distance: number;
+  duration: number;
+  geometry: {
+    coordinates: [number, number][];
+    type: "LineString";
+  };
+  legs: RouteLegData[];
+  waypointOrder: number[];
+  source: "route" | "trip";
 }
 
 export interface Trip {

@@ -2,8 +2,8 @@
   <img src="https://images.prismic.io/derajportfolio/adV7P-zlhpBNhbdU_basho.png?auto=format,compress" alt="Basho Logo" width="90" />
 
   <h1>Basho</h1>
-  <p><strong>Trip planning made easy.</strong></p>
-  <p>A cinematic, map-first travel itinerary builder powered by Google Maps, Google Places, and Supabase.</p>
+  <p><strong>From vibe to viable plans in under 60 seconds.</strong></p>
+  <p>A cinematic, map-first, time-aware outing planner powered by Google Maps, Google Places, and Supabase.</p>
 
   <a href="https://derajyojith.dev/basho"><strong>→ Live Demo</strong></a>
   &nbsp;·&nbsp;
@@ -20,7 +20,7 @@
 
 ## What is Basho?
 
-Basho is a modern, glassmorphic trip-planning web application. Think Wanderlog meets Google Maps — you can search any place in the world, explore trending restobars near you, save pins to your personal map, and drag-drop locations into an itinerary bucket for each day of your trip.
+Basho is a modern, glassmorphic trip-planning web application. Think Wanderlog meets Google Maps with planner intelligence: you can search any place in the world, explore trending restobars near you, save pins to your personal map, and drag-drop locations into a time-aware itinerary bucket.
 
 The map is the interface. Everything is built around it.
 
@@ -32,7 +32,9 @@ The map is the interface. Everything is built around it.
 - **Google Places Search** — Live place search powered by the Places API. Real thumbnails, real ratings, real addresses.
 - **Trending Feed** — On load, 5 random top-rated restobars in Bangalore are fetched and pinned dynamically. No hardcoded data.
 - **Category Markers** — Custom emoji-based markers per category (🍽️ dining, ☕ cafe, 🏛️ historic, etc.) with glow effects on selection.
-- **Drag & Drop Itinerary** — Drag any place card from the sidebar into your Trip Bucket using `dnd-kit`. Reorder freely.
+- **Time-Aware Trip Bucket** — Drag places into your Trip Bucket, set dwell time per stop, and preview arrivals/departures.
+- **Plan Quality Score** — Live score for feasibility, pacing, efficiency, and variety with warning badges on weak legs.
+- **Route Modes** — Switch between keeping your custom order and route optimization before generating a route.
 - **Cinematic Landing Page** — Full-screen aerial video splash with Framer Motion staggered typography animation.
 - **Google OAuth** — One-tap sign-in via Supabase Auth when saving places.
 - **Supabase Backend** — Saved places and user data persisted in PostgreSQL via Supabase.

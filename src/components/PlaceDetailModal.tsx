@@ -1,7 +1,7 @@
 import { Place, CATEGORY_ICONS, CATEGORY_COLORS } from "@/types/places";
-import { X, MapPin, Star, Tag, Link2, MessageSquare, Instagram, Edit3, Bookmark, BookmarkCheck } from "lucide-react";
-import { Dialog, DialogContent, DialogTitle, DialogClose } from "@/components/ui/dialog";
-import { useState } from "react";
+import { MapPin, Star, Tag, Link2, MessageSquare, Instagram, Edit3, Bookmark, BookmarkCheck } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { useEffect, useState } from "react";
 
 interface PlaceDetailModalProps {
   place: Place | null;
@@ -12,14 +12,47 @@ interface PlaceDetailModalProps {
   onUpdate?: (place: Place) => void;
 }
 
-export default function PlaceDetailModal({ place, isOpen, onClose, onSave, isSaving }: PlaceDetailModalProps) {
+export default function PlaceDetailModal({ place, isOpen, onClose, onSave, isSaving, onUpdate }: PlaceDetailModalProps) {
   const [activeTab, setActiveTab] = useState<"details" | "media" | "notes">("details");
   const [saved, setSaved] = useState(false);
+  const [isEditingNote, setIsEditingNote] = useState(false);
+  const [noteDraft, setNoteDraft] = useState("");
+
+  useEffect(() => {
+    setSaved(false);
+    setIsEditingNote(false);
+    setNoteDraft(place?.notes || "");
+  }, [place?.id, place?.notes]);
 
   const handleSave = () => {
     if (!place || !onSave) return;
-    onSave(place);
+
+    const noteValue = noteDraft.trim();
+    onSave({
+      ...place,
+      notes: noteValue.length > 0 ? noteValue : undefined,
+    });
     setSaved(true);
+  };
+
+  const handleSaveNote = () => {
+    if (!place) return;
+
+    const noteValue = noteDraft.trim();
+    const updatedPlace = {
+      ...place,
+      notes: noteValue.length > 0 ? noteValue : undefined,
+    };
+
+    if (onUpdate) {
+      onUpdate(updatedPlace);
+      setSaved(true);
+    } else if (onSave) {
+      onSave(updatedPlace);
+      setSaved(true);
+    }
+
+    setIsEditingNote(false);
   };
 
   if (!place) return null;
@@ -28,7 +61,7 @@ export default function PlaceDetailModal({ place, isOpen, onClose, onSave, isSav
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md p-0 overflow-hidden bg-black/60 backdrop-blur-3xl border-white/10 shadow-2xl rounded-3xl">
+      <DialogContent className="w-[calc(100vw-1rem)] max-h-[92dvh] sm:max-w-md p-0 overflow-hidden bg-black/60 backdrop-blur-3xl border-white/10 shadow-2xl rounded-2xl sm:rounded-3xl">
         {/* Header Cover Image */}
         {place.imageUrl ? (
           <div className="relative h-56 w-full bg-secondary/20">
@@ -54,7 +87,7 @@ export default function PlaceDetailModal({ place, isOpen, onClose, onSave, isSav
         )}
 
         {/* Content Body */}
-        <div className="px-6 pt-10 pb-6 relative z-0">
+        <div className="px-4 sm:px-6 pt-10 pb-6 relative z-0 overflow-y-auto max-h-[calc(92dvh-9.5rem)]">
           <DialogTitle className="text-2xl font-heading font-bold text-white tracking-tight">
             {place.name}
           </DialogTitle>
@@ -106,24 +139,24 @@ export default function PlaceDetailModal({ place, isOpen, onClose, onSave, isSav
           )}
 
           {/* Tabs */}
-          <div className="flex gap-4 mt-6 border-b border-white/10 px-1">
+          <div className="mt-6 flex gap-4 overflow-x-auto border-b border-white/10 px-1 pb-1">
             <button 
               onClick={() => setActiveTab("details")}
-              className={`pb-2 text-sm font-semibold transition-colors relative ${activeTab === "details" ? "text-primary" : "text-white/40 hover:text-white/80"}`}
+              className={`shrink-0 pb-2 text-sm font-semibold transition-colors relative ${activeTab === "details" ? "text-primary" : "text-white/40 hover:text-white/80"}`}
             >
               Details
               {activeTab === "details" && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />}
             </button>
             <button 
               onClick={() => setActiveTab("notes")}
-              className={`pb-2 text-sm font-semibold transition-colors relative ${activeTab === "notes" ? "text-primary" : "text-white/40 hover:text-white/80"}`}
+              className={`shrink-0 pb-2 text-sm font-semibold transition-colors relative ${activeTab === "notes" ? "text-primary" : "text-white/40 hover:text-white/80"}`}
             >
               Notes & Tags
               {activeTab === "notes" && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />}
             </button>
             <button 
               onClick={() => setActiveTab("media")}
-              className={`pb-2 text-sm font-semibold transition-colors relative ${activeTab === "media" ? "text-primary" : "text-white/40 hover:text-white/80"}`}
+              className={`shrink-0 pb-2 text-sm font-semibold transition-colors relative ${activeTab === "media" ? "text-primary" : "text-white/40 hover:text-white/80"}`}
             >
               Social Media
               {activeTab === "media" && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-t-full" />}
@@ -135,12 +168,48 @@ export default function PlaceDetailModal({ place, isOpen, onClose, onSave, isSav
             {activeTab === "details" && (
               <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                 <p className="text-sm text-white/70 leading-relaxed font-medium">
-                  {place.notes || "No description provided. Click the edit button to add your own personal notes about this location."}
+                  {noteDraft.trim().length > 0
+                    ? noteDraft
+                    : "No description provided. Click the button below to add your own personal notes about this location."}
                 </p>
-                <button className="flex w-full items-center justify-center gap-2 rounded-xl bg-white/5 border border-white/10 py-3 text-sm font-semibold text-white/80 transition-all hover:bg-white/10 active:scale-[0.98]">
-                  <MessageSquare className="h-4 w-4" />
-                  Leave a Note
-                </button>
+
+                {isEditingNote ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={noteDraft}
+                      onChange={(event) => setNoteDraft(event.target.value)}
+                      rows={4}
+                      placeholder="Add a short note about why this place matters..."
+                      className="w-full resize-none rounded-xl border border-white/10 bg-black/35 p-3 text-sm text-white outline-none focus:border-primary/50"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSaveNote}
+                        disabled={isSaving}
+                        className="flex-1 rounded-lg bg-primary/20 py-2 text-sm font-semibold text-primary ring-1 ring-primary/30 transition-colors hover:bg-primary/30 disabled:opacity-50"
+                      >
+                        {isSaving ? "Saving..." : "Save Note"}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsEditingNote(false);
+                          setNoteDraft(place.notes || "");
+                        }}
+                        className="flex-1 rounded-lg bg-white/10 py-2 text-sm font-semibold text-white/80 ring-1 ring-white/10 transition-colors hover:bg-white/15"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setIsEditingNote(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-white/5 border border-white/10 py-3 text-sm font-semibold text-white/80 transition-all hover:bg-white/10 active:scale-[0.98]"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    {noteDraft.trim().length > 0 ? "Edit Note" : "Leave a Note"}
+                  </button>
+                )}
               </div>
             )}
 

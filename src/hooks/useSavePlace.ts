@@ -26,36 +26,56 @@ export function useSavePlace() {
         return null;
       }
 
-      // 2. Insert into global places if it's from global search (we assume it's new if originalId exists but not in our DB maybe)
-      // Actually, we can do an upsert on places table based on originalId or just insert returning id.
-      // We will just do a simple insert into places.
-      const { data: globalPlace, error: placeError } = await supabase
-        .from('places')
-        .insert({
-          name: place.name,
-          address: place.address,
-          lat: place.lat,
-          lng: place.lng,
-          category: place.category,
-          image_url: place.imageUrl,
-        })
-        .select()
-        .single();
+      // 2. Reuse an existing canonical place row if one matches this location.
+      const { data: existingPlace, error: existingLookupError } = await supabase
+        .from("places")
+        .select("id,name,address,lat,lng,category,image_url,rating,created_at")
+        .eq("name", place.name)
+        .eq("address", place.address)
+        .eq("lat", place.lat)
+        .eq("lng", place.lng)
+        .limit(1)
+        .maybeSingle();
 
-      if (placeError) throw placeError;
+      if (existingLookupError) throw existingLookupError;
 
-      // 3. Link to user_saved_places
+      let persistedPlace = existingPlace;
+
+      if (!persistedPlace) {
+        const { data: insertedPlace, error: insertPlaceError } = await supabase
+          .from("places")
+          .insert({
+            name: place.name,
+            address: place.address,
+            lat: place.lat,
+            lng: place.lng,
+            category: place.category,
+            image_url: place.imageUrl,
+            rating: place.rating,
+          })
+          .select("id,name,address,lat,lng,category,image_url,rating,created_at")
+          .single();
+
+        if (insertPlaceError) throw insertPlaceError;
+        persistedPlace = insertedPlace;
+      }
+
+      // 3. Upsert save link to avoid duplicates and persist note/tag edits.
       const { error: linkError } = await supabase
-        .from('user_saved_places')
-        .insert({
-          user_id: session.user.id,
-          place_id: globalPlace.id,
-          tags: place.tags || [],
-        });
+        .from("user_saved_places")
+        .upsert(
+          {
+            user_id: session.user.id,
+            place_id: persistedPlace.id,
+            custom_notes: place.notes?.trim() || null,
+            tags: place.tags || [],
+          },
+          { onConflict: "user_id,place_id" },
+        );
 
       if (linkError) throw linkError;
 
-      return globalPlace;
+      return persistedPlace;
     },
     onSuccess: (data) => {
       if (data) {

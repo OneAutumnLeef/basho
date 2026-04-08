@@ -1,9 +1,45 @@
 import { useQuery } from '@tanstack/react-query';
-import { Place, PlaceCategory } from '@/types/places';
+import {
+  DiscoveryContext,
+  DiscoveryTimeWindow,
+  Place,
+  PlaceCategory,
+} from '@/types/places';
 
 const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
+const DEFAULT_DISCOVERY_CONTEXT: DiscoveryContext = {
+  city: 'Bangalore',
+  vibe: 'Night Out',
+  timeWindow: 'evening',
+};
+
+const TIME_WINDOW_HINTS: Record<DiscoveryTimeWindow, string> = {
+  morning: 'breakfast-friendly',
+  afternoon: 'afternoon-friendly',
+  evening: 'evening-friendly',
+  'late-night': 'late-night friendly',
+};
+
 let placesServiceInstance: any = null;
+
+function normalizeDiscoveryContext(
+  contextOverrides?: Partial<DiscoveryContext>,
+): DiscoveryContext {
+  return {
+    city: contextOverrides?.city?.trim() || DEFAULT_DISCOVERY_CONTEXT.city,
+    vibe: contextOverrides?.vibe?.trim() || DEFAULT_DISCOVERY_CONTEXT.vibe,
+    timeWindow: contextOverrides?.timeWindow || DEFAULT_DISCOVERY_CONTEXT.timeWindow,
+  };
+}
+
+function buildSearchQuery(query: string, context: DiscoveryContext): string {
+  return `${query} ${TIME_WINDOW_HINTS[context.timeWindow]} in ${context.city}`.trim();
+}
+
+function normalizeVibeTag(vibe: string): string {
+  return vibe.trim().toLowerCase().replace(/\s+/g, '-');
+}
 
 function initGoogleMapsService(): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -65,16 +101,21 @@ function mapGoogleTypeToCategory(types: string[]): PlaceCategory {
   return 'other';
 }
 
-export function usePlaceSearch(query: string) {
+export function usePlaceSearch(
+  query: string,
+  contextOverrides?: Partial<DiscoveryContext>,
+) {
+  const context = normalizeDiscoveryContext(contextOverrides);
+
   return useQuery({
-    queryKey: ['placeSearch', query],
+    queryKey: ['placeSearch', query, context.city, context.vibe, context.timeWindow],
     queryFn: async (): Promise<Place[]> => {
       if (!query || query.length < 3) return [];
       
       if (GOOGLE_API_KEY) {
         const service = await initGoogleMapsService();
         return new Promise<Place[]>((resolve, reject) => {
-          service.textSearch({ query }, (results: any[], status: string) => {
+          service.textSearch({ query: buildSearchQuery(query, context) }, (results: any[], status: string) => {
             if (status !== 'OK' && status !== 'ZERO_RESULTS') {
               console.error("Google Places Error:", status);
               return reject(new Error(`Google Places API returned status: ${status}`));
@@ -98,7 +139,7 @@ export function usePlaceSearch(query: string) {
                 category: mapGoogleTypeToCategory(p.types || []),
                 rating: p.rating,
                 imageUrl,
-                tags: [],
+                tags: [normalizeVibeTag(context.vibe), context.timeWindow],
                 createdAt: new Date().toISOString()
               };
             });
@@ -107,7 +148,9 @@ export function usePlaceSearch(query: string) {
         });
       } else {
         // Fallback to Photon
-        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=10`);
+        const res = await fetch(
+          `https://photon.komoot.io/api/?q=${encodeURIComponent(buildSearchQuery(query, context))}&limit=10`,
+        );
         if (!res.ok) throw new Error('Photon search failed');
         
         const data = await res.json();
@@ -136,7 +179,7 @@ export function usePlaceSearch(query: string) {
             lng: f.geometry.coordinates[0],
             category,
             rating: undefined,
-            tags: [],
+            tags: [normalizeVibeTag(context.vibe), context.timeWindow],
             createdAt: new Date().toISOString()
           };
         });

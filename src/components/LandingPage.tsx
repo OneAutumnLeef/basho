@@ -9,6 +9,8 @@ interface LandingPageProps {
 
 export default function LandingPage({ onStart }: LandingPageProps) {
   const [brushMode, setBrushMode] = useState(false);
+  const [aerialVideoFailed, setAerialVideoFailed] = useState(false);
+  const [brushVideoFailed, setBrushVideoFailed] = useState(false);
 
   return (
     <motion.div
@@ -20,7 +22,7 @@ export default function LandingPage({ onStart }: LandingPageProps) {
       {/* Toggle Button — top right */}
       <motion.button
         onClick={() => setBrushMode((m) => !m)}
-        className="absolute top-6 right-6 z-20 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 backdrop-blur-xl border border-white/20 shadow-lg text-white/70 hover:bg-white/20 hover:text-white transition-all"
+        className="absolute top-6 right-6 z-20 hidden h-11 w-11 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white/70 shadow-lg backdrop-blur-xl transition-all hover:bg-white/20 hover:text-white lg:flex"
         title={brushMode ? "Switch to aerial view" : "Switch to brush stroke view"}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -45,12 +47,20 @@ export default function LandingPage({ onStart }: LandingPageProps) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <video
-              autoPlay loop muted playsInline
-              className="h-full w-full object-cover opacity-60 mix-blend-screen grayscale-[20%]"
-            >
-              <source src="https://cdn.pixabay.com/video/2019/04/17/22822-330689405_large.mp4" type="video/mp4" />
-            </video>
+            {aerialVideoFailed ? (
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(34,211,238,0.35),transparent_40%),radial-gradient(circle_at_75%_25%,rgba(56,189,248,0.28),transparent_35%),radial-gradient(circle_at_55%_80%,rgba(45,212,191,0.3),transparent_40%),linear-gradient(165deg,rgba(3,7,18,0.98),rgba(7,19,32,0.95))]" />
+            ) : (
+              <video
+                autoPlay
+                loop
+                muted
+                playsInline
+                onError={() => setAerialVideoFailed(true)}
+                className="h-full w-full scale-[1.2] object-cover opacity-60 mix-blend-screen grayscale-[20%]"
+              >
+                <source src="https://cdn.pixabay.com/video/2019/04/17/22822-330689405_large.mp4" type="video/mp4" />
+              </video>
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent" />
           </motion.div>
         ) : (
@@ -64,13 +74,21 @@ export default function LandingPage({ onStart }: LandingPageProps) {
             transition={{ duration: 0.6 }}
           >
             {/* Video centered over text — covers heading + tagline */}
-            <video
-              autoPlay loop muted playsInline
-              className="w-[120vw] max-w-none"
-              style={{ mixBlendMode: "multiply", marginTop: "-40px" }}
-            >
-              <source src={getAssetUrl("brush.mp4")} type="video/mp4" />
-            </video>
+            {brushVideoFailed ? (
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_30%,rgba(255,255,255,0.38),transparent_42%),radial-gradient(circle_at_80%_65%,rgba(0,0,0,0.2),transparent_45%),linear-gradient(145deg,rgba(245,245,245,0.95),rgba(255,255,255,1))]" />
+            ) : (
+              <video
+                autoPlay
+                loop
+                muted
+                playsInline
+                onError={() => setBrushVideoFailed(true)}
+                className="w-[120vw] max-w-none"
+                style={{ mixBlendMode: "multiply", marginTop: "-40px" }}
+              >
+                <source src={getAssetUrl("brush.mp4")} type="video/mp4" />
+              </video>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -93,13 +111,13 @@ export default function LandingPage({ onStart }: LandingPageProps) {
         </motion.h1>
 
         <motion.p
-          className="text-xl md:text-2xl font-medium max-w-lg mb-12"
+          className="mb-12 whitespace-nowrap px-2 text-[clamp(0.6rem,3.4vw,1.5rem)] font-medium"
           style={{ color: brushMode ? "#ffffff" : "rgba(255,255,255,0.7)" }}
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, ease: "easeOut", delay: 0.5 }}
         >
-          Trip planning made easy.
+          From vibe to viable plans in under 60 seconds.
         </motion.p>
 
         <motion.button
