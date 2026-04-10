@@ -61,6 +61,8 @@ const DEFAULT_PLANNER_SETTINGS: PlannerSettings = {
 const SEARCH_DEBOUNCE_MS = 900;
 const DISCOVERY_CONTEXT_DEBOUNCE_MS = 1000;
 const SEARCH_MIN_QUERY_LENGTH = 4;
+const GUIDE_AUTO_OPEN_DELAY_MS = 5000;
+const GUIDE_SESSION_SEEN_KEY = "basho-guide-seen-v2";
 
 function normalizeBucketOrder(items: TripBucketItem[]): TripBucketItem[] {
   return items.map((item, order) => ({ ...item, order }));
@@ -757,6 +759,31 @@ const Index = () => {
     });
   }, [isMobile]);
 
+  const handleOpenTripGuide = useCallback(() => {
+    if (typeof window !== "undefined") {
+      window.sessionStorage.setItem(GUIDE_SESSION_SEEN_KEY, "1");
+    }
+    setTripGuideOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hasLanded || tripGuideOpen || typeof window === "undefined") {
+      return;
+    }
+
+    if (window.sessionStorage.getItem(GUIDE_SESSION_SEEN_KEY) === "1") {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      handleOpenTripGuide();
+    }, GUIDE_AUTO_OPEN_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [handleOpenTripGuide, hasLanded, tripGuideOpen]);
+
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const dragData = event.active.data.current as { place?: Place } | undefined;
     if (dragData) {
@@ -886,11 +913,18 @@ const Index = () => {
             </button>
 
             <button
-              onClick={() => setTripGuideOpen(true)}
-              className="mt-2 group flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-black/55 text-white/75 shadow-xl backdrop-blur-md transition-all hover:bg-black/75 hover:text-white active:scale-95"
+              onClick={handleOpenTripGuide}
+              className="mt-1 group relative flex items-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-400/15 px-3 py-2 text-white shadow-xl backdrop-blur-md transition-all hover:bg-cyan-400/25 active:scale-95"
               title="How to use Basho"
             >
-              <CircleHelp className="h-4.5 w-4.5" />
+              <span className="relative flex h-2.5 w-2.5 items-center justify-center">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-200/80" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-100" />
+              </span>
+              <CircleHelp className="h-4 w-4" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-50">
+                Show me how to use
+              </span>
             </button>
           </div>
         </div>
