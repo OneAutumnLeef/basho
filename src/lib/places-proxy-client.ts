@@ -40,7 +40,13 @@ function extractGooglePhotoPath(
   if (!trimmed) return null;
 
   if (trimmed.startsWith('places/')) {
-    return { path: trimmed, maxHeightPx: '560' };
+    const normalized = trimmed
+      .replace(/\?.*$/, '')
+      .replace(/\/media$/, '')
+      .replace(/^\/+/, '');
+
+    if (!normalized.startsWith('places/')) return null;
+    return { path: normalized, maxHeightPx: '560' };
   }
 
   try {
@@ -49,7 +55,8 @@ function extractGooglePhotoPath(
 
     const normalizedPath = parsed.pathname
       .replace(/^\/v1\//, '')
-      .replace(/^\//, '');
+      .replace(/^\//, '')
+      .replace(/\/media$/, '');
 
     if (!normalizedPath.startsWith('places/')) return null;
 

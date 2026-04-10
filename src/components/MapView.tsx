@@ -3,6 +3,9 @@ import { Place, CATEGORY_COLORS, CATEGORY_ICONS } from "@/types/places";
 
 const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const GOOGLE_MAP_ID = "d92a874bf13d983229168fd9";
+const GOOGLE_MAPS_SCRIPT_ID = "google-maps-script";
+
+let googleMapsScriptPromise: Promise<void> | null = null;
 
 // Force dark style in code regardless of cloud config
 const DARK_MAP_STYLE = [
@@ -31,16 +34,62 @@ interface MapViewProps {
   routeData?: any;
 }
 
-function waitForGoogleMaps(): Promise<void> {
-  return new Promise((resolve) => {
-    if ((window as any).google?.maps) return resolve();
-    const interval = setInterval(() => {
+function loadGoogleMapsScript(apiKey: string): Promise<void> {
+  if ((window as any).google?.maps) {
+    return Promise.resolve();
+  }
+
+  if (googleMapsScriptPromise) {
+    return googleMapsScriptPromise;
+  }
+
+  googleMapsScriptPromise = new Promise((resolve, reject) => {
+    const existing = document.getElementById(GOOGLE_MAPS_SCRIPT_ID) as HTMLScriptElement | null;
+
+    const handleLoad = () => {
       if ((window as any).google?.maps) {
-        clearInterval(interval);
         resolve();
+      } else {
+        reject(new Error("Google Maps SDK loaded without maps namespace."));
       }
-    }, 100);
+    };
+
+    const handleError = () => {
+      reject(new Error("Failed to load Google Maps SDK script."));
+    };
+
+    if (existing) {
+      existing.addEventListener("load", handleLoad, { once: true });
+      existing.addEventListener("error", handleError, { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = GOOGLE_MAPS_SCRIPT_ID;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async`;
+    script.async = true;
+    script.defer = true;
+    script.addEventListener("load", handleLoad, { once: true });
+    script.addEventListener("error", handleError, { once: true });
+    document.head.appendChild(script);
   });
+
+  return googleMapsScriptPromise;
+}
+
+async function ensureGoogleMapsReady(): Promise<boolean> {
+  if (!GOOGLE_API_KEY) {
+    console.warn("Google Maps key missing. Map will remain in fallback mode.");
+    return false;
+  }
+
+  try {
+    await loadGoogleMapsScript(GOOGLE_API_KEY);
+    return Boolean((window as any).google?.maps);
+  } catch (error) {
+    console.warn("Google Maps unavailable:", error);
+    return false;
+  }
 }
 
 export default function MapView({ places, onPlaceClick, selectedPlaceId, routeData }: MapViewProps) {
@@ -54,7 +103,8 @@ export default function MapView({ places, onPlaceClick, selectedPlaceId, routeDa
     if (!mapRef.current) return;
 
     async function init() {
-      await waitForGoogleMaps();
+      const isReady = await ensureGoogleMapsReady();
+      if (!isReady) return;
       if (mapInstanceRef.current) return; // already init
 
       const google = (window as any).google;
@@ -82,8 +132,8 @@ export default function MapView({ places, onPlaceClick, selectedPlaceId, routeDa
 
   // Sync markers when places change
   useEffect(() => {
-    waitForGoogleMaps().then(() => {
-      if (!mapInstanceRef.current) return;
+    ensureGoogleMapsReady().then((isReady) => {
+      if (!isReady || !mapInstanceRef.current) return;
       const google = (window as any).google;
       const map = mapInstanceRef.current;
 
@@ -144,8 +194,8 @@ export default function MapView({ places, onPlaceClick, selectedPlaceId, routeDa
 
   // Draw route polyline
   useEffect(() => {
-    waitForGoogleMaps().then(() => {
-      if (!mapInstanceRef.current) return;
+    ensureGoogleMapsReady().then((isReady) => {
+      if (!isReady || !mapInstanceRef.current) return;
       const google = (window as any).google;
 
       if (polylineRef.current) {
