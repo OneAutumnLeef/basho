@@ -3,6 +3,7 @@ import { DiscoveryContext, Place } from '@/types/places';
 
 type PlacesProxyEndpoint = 'search' | 'trending';
 const CLIENT_GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+const CLIENT_SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 interface PlacesProxyRequest {
   endpoint: PlacesProxyEndpoint;
@@ -14,6 +15,20 @@ interface PlacesProxyResponse {
   data?: Place[];
   error?: string;
   details?: string;
+}
+
+function isLegacyPhotoServiceUrl(raw: string | undefined): boolean {
+  if (!raw) return false;
+
+  try {
+    const parsed = new URL(raw);
+    return (
+      parsed.hostname === 'maps.googleapis.com' &&
+      parsed.pathname.includes('/maps/api/place/js/PhotoService.GetPhoto')
+    );
+  } catch {
+    return false;
+  }
 }
 
 function extractGooglePhotoPath(
@@ -66,6 +81,10 @@ function resolvePlaceImageUrl(place: Place): string | undefined {
       : undefined;
   }
 
+  if (isLegacyPhotoServiceUrl(place.imageUrl)) {
+    return undefined;
+  }
+
   return place.imageUrl;
 }
 
@@ -84,9 +103,36 @@ export function canUsePlacesProxy(): boolean {
   return Boolean(import.meta.env.VITE_SUPABASE_URL) && Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY);
 }
 
+async function buildProxyInvokeHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {};
+
+  if (CLIENT_SUPABASE_ANON_KEY) {
+    headers.apikey = CLIENT_SUPABASE_ANON_KEY;
+  }
+
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    const token = session?.access_token || CLIENT_SUPABASE_ANON_KEY;
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+  } catch {
+    if (CLIENT_SUPABASE_ANON_KEY) {
+      headers.Authorization = `Bearer ${CLIENT_SUPABASE_ANON_KEY}`;
+    }
+  }
+
+  return headers;
+}
+
 export async function fetchPlacesFromProxy(request: PlacesProxyRequest): Promise<Place[]> {
+  const headers = await buildProxyInvokeHeaders();
   const { data, error } = await supabase.functions.invoke<PlacesProxyResponse>('places-proxy', {
     body: request,
+    headers,
   });
 
   if (error) {
