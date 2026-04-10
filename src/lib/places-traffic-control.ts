@@ -18,7 +18,7 @@ type CacheStore = Record<string, CachedEntry>;
 
 const QUOTA_STORAGE_KEY = "basho-places-quota-v1";
 const CACHE_STORAGE_KEY = "basho-places-cache-v1";
-const CACHE_KEY_VERSION = "v3";
+const CACHE_KEY_VERSION = "v4";
 
 const DEFAULT_SEARCH_DAILY_LIMIT = Number(import.meta.env.VITE_PLACES_SEARCH_DAILY_LIMIT ?? 120);
 const DEFAULT_TRENDING_DAILY_LIMIT = Number(import.meta.env.VITE_PLACES_TRENDING_DAILY_LIMIT ?? 24);
@@ -28,11 +28,11 @@ const DEFAULT_MAX_CACHE_ENTRIES = Number(import.meta.env.VITE_PLACES_CACHE_MAX_E
 
 const warnedMessages = new Set<string>();
 const inFlightRequests = new Map<string, Promise<Place[]>>();
+const lastNetworkAtByKey = new Map<string, number>();
 
-const lastNetworkAt: Record<PlacesEndpoint, number> = {
-  search: 0,
-  trending: 0,
-};
+function buildThrottleKey(endpoint: PlacesEndpoint, requestKey?: string): string {
+  return requestKey ? `${endpoint}|${requestKey}` : endpoint;
+}
 
 function logOnce(message: string): void {
   if (warnedMessages.has(message)) return;
@@ -151,13 +151,16 @@ export function setCachedPlaces(cacheKey: string, value: Place[], ttlMs: number)
   writeCacheStore(trimCacheStore(store));
 }
 
-export function shouldThrottlePlaces(endpoint: PlacesEndpoint): boolean {
+export function shouldThrottlePlaces(endpoint: PlacesEndpoint, requestKey?: string): boolean {
   const cooldown = getCooldownMs(endpoint);
-  return Date.now() - lastNetworkAt[endpoint] < cooldown;
+  const key = buildThrottleKey(endpoint, requestKey);
+  const lastNetworkAt = lastNetworkAtByKey.get(key) ?? 0;
+  return Date.now() - lastNetworkAt < cooldown;
 }
 
-export function markPlacesNetworkRequest(endpoint: PlacesEndpoint): void {
-  lastNetworkAt[endpoint] = Date.now();
+export function markPlacesNetworkRequest(endpoint: PlacesEndpoint, requestKey?: string): void {
+  const key = buildThrottleKey(endpoint, requestKey);
+  lastNetworkAtByKey.set(key, Date.now());
 }
 
 export function canUseGooglePlaces(endpoint: PlacesEndpoint): boolean {

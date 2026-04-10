@@ -106,10 +106,18 @@ function filterPlacesByCity(places: Place[], city: string): Place[] {
   const tokens = buildCityTokens(city);
   if (tokens.length === 0) return places;
 
-  return places.filter((place) => {
-    const normalizedAddress = normalizeAddressToken(place.address || '');
+  const matched = places.filter((place) => {
+    const normalizedAddress = normalizeAddressToken(`${place.name || ''} ${place.address || ''}`);
     return tokens.some((token) => normalizedAddress.includes(token));
   });
+
+  if (matched.length === 0) {
+    return places;
+  }
+
+  const matchedIds = new Set(matched.map((place) => place.id));
+  const unmatched = places.filter((place) => !matchedIds.has(place.id));
+  return [...matched, ...unmatched];
 }
 
 async function fetchTrendingWithPhoton(context: DiscoveryContext): Promise<Place[]> {
@@ -175,11 +183,11 @@ export function useTrendingPlaces(
         const shouldUseProxy =
           canUsePlacesProxy() &&
           canUseGooglePlaces('trending') &&
-          !shouldThrottlePlaces('trending');
+          !shouldThrottlePlaces('trending', cacheKey);
 
         if (shouldUseProxy) {
           try {
-            markPlacesNetworkRequest('trending');
+            markPlacesNetworkRequest('trending', cacheKey);
             consumeGooglePlacesBudget('trending');
 
             const proxyResults = await fetchPlacesFromProxy({
@@ -187,6 +195,12 @@ export function useTrendingPlaces(
               context,
               query: buildTrendingQuery(context),
             });
+
+            if (proxyResults.length === 0) {
+              const fallbackResults = await fetchTrendingWithPhoton(context);
+              setCachedPlaces(cacheKey, fallbackResults, TRENDING_CACHE_TTL_MS);
+              return fallbackResults;
+            }
 
             let scopedResults = proxyResults;
             if (proxyResults.length > 0) {

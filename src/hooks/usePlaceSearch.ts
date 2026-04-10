@@ -78,10 +78,18 @@ function filterPlacesByCity(places: Place[], city: string): Place[] {
   const tokens = buildCityTokens(city);
   if (tokens.length === 0) return places;
 
-  return places.filter((place) => {
-    const normalizedAddress = normalizeAddressToken(place.address || '');
+  const matched = places.filter((place) => {
+    const normalizedAddress = normalizeAddressToken(`${place.name || ''} ${place.address || ''}`);
     return tokens.some((token) => normalizedAddress.includes(token));
   });
+
+  if (matched.length === 0) {
+    return places;
+  }
+
+  const matchedIds = new Set(matched.map((place) => place.id));
+  const unmatched = places.filter((place) => !matchedIds.has(place.id));
+  return [...matched, ...unmatched];
 }
 
 async function searchWithPhoton(query: string, context: DiscoveryContext): Promise<Place[]> {
@@ -156,11 +164,11 @@ export function usePlaceSearch(
         const shouldUseProxy =
           canUsePlacesProxy() &&
           canUseGooglePlaces('search') &&
-          !shouldThrottlePlaces('search');
+          !shouldThrottlePlaces('search', cacheKey);
 
         if (shouldUseProxy) {
           try {
-            markPlacesNetworkRequest('search');
+            markPlacesNetworkRequest('search', cacheKey);
             consumeGooglePlacesBudget('search');
 
             const proxyResults = await fetchPlacesFromProxy({
@@ -168,6 +176,12 @@ export function usePlaceSearch(
               query: normalizedQuery,
               context,
             });
+
+            if (proxyResults.length === 0) {
+              const fallbackResults = await searchWithPhoton(normalizedQuery, context);
+              setCachedPlaces(cacheKey, fallbackResults, SEARCH_CACHE_TTL_MS);
+              return fallbackResults;
+            }
 
             setCachedPlaces(cacheKey, proxyResults, SEARCH_CACHE_TTL_MS);
             return proxyResults;

@@ -102,6 +102,8 @@ const CITY_ALIASES: Record<string, string[]> = {
   bengaluru: ["bangalore"],
 };
 
+const STRICT_CITY_FILTERS = new Set(["bangalore", "bengaluru"]);
+
 const FIELD_MASK = [
   "places.id",
   "places.displayName",
@@ -160,7 +162,7 @@ function buildTrendingQuery(context: DiscoveryContext): string {
 function buildServerCacheKey(endpoint: ProxyEndpoint, query: string, context: DiscoveryContext): string {
   if (endpoint === "search") {
     return [
-      "proxy-v2",
+      "proxy-v3",
       endpoint,
       normalizeText(query),
       normalizeText(context.city),
@@ -170,7 +172,7 @@ function buildServerCacheKey(endpoint: ProxyEndpoint, query: string, context: Di
   }
 
   return [
-    "proxy-v2",
+    "proxy-v3",
     endpoint,
     normalizeText(context.city),
     normalizeText(context.vibe),
@@ -193,13 +195,27 @@ function buildCityTokens(city: string): string[] {
 }
 
 function filterPlacesByCity(places: Place[], city: string): Place[] {
+  const normalizedCity = normalizeText(city);
+  const isStrictCity = STRICT_CITY_FILTERS.has(normalizedCity);
   const cityTokens = buildCityTokens(city);
   if (cityTokens.length === 0) return places;
 
-  return places.filter((place) => {
-    const normalizedAddress = normalizeAddressToken(place.address || "");
+  const matched = places.filter((place) => {
+    const normalizedAddress = normalizeAddressToken(`${place.name || ""} ${place.address || ""}`);
     return cityTokens.some((token) => normalizedAddress.includes(token));
   });
+
+  if (isStrictCity) {
+    return matched;
+  }
+
+  if (matched.length === 0) {
+    return places;
+  }
+
+  const matchedIds = new Set(matched.map((place) => place.id));
+  const unmatched = places.filter((place) => !matchedIds.has(place.id));
+  return [...matched, ...unmatched];
 }
 
 function mapGoogleTypeToCategory(types: string[]): PlaceCategory {
