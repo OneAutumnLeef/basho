@@ -21,12 +21,37 @@
   <body>
     <!-- Error Catcher -->
     <script>
-      window.addEventListener('error', function(e) {
-        document.body.innerHTML = '<div style="color:red;font-size:20px;padding:20px;"><b>Global Error:</b> ' + e.message + '<br/><pre>' + e.error?.stack + '</pre></div>';
-      });
-      window.addEventListener('unhandledrejection', function(e) {
-        document.body.innerHTML = '<div style="color:red;font-size:20px;padding:20px;"><b>Unhandled Promise:</b> ' + e.reason + '</div>';
-      });
+      (function () {
+        var isLocalhost =
+          window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1';
+
+        window.addEventListener('error', function (e) {
+          if (isLocalhost) {
+            document.body.innerHTML =
+              '<div style="color:red;font-size:20px;padding:20px;"><b>Global Error:</b> ' +
+              e.message +
+              '<br/><pre>' +
+              (e.error && e.error.stack ? e.error.stack : '') +
+              '</pre></div>';
+            return;
+          }
+
+          console.error('Global Error:', e.message, e.error);
+        });
+
+        window.addEventListener('unhandledrejection', function (e) {
+          if (isLocalhost) {
+            document.body.innerHTML =
+              '<div style="color:red;font-size:20px;padding:20px;"><b>Unhandled Promise:</b> ' +
+              e.reason +
+              '</div>';
+            return;
+          }
+
+          console.error('Unhandled Promise:', e.reason);
+        });
+      })();
     </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

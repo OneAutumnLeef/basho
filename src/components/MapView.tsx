@@ -47,11 +47,20 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
     const existing = document.getElementById(GOOGLE_MAPS_SCRIPT_ID) as HTMLScriptElement | null;
 
     const handleLoad = () => {
-      if ((window as any).google?.maps) {
-        resolve();
-      } else {
-        reject(new Error("Google Maps SDK loaded without maps namespace."));
-      }
+      const startedAt = Date.now();
+      const timer = window.setInterval(() => {
+        const mapCtor = (window as any).google?.maps?.Map;
+        if (typeof mapCtor === "function") {
+          window.clearInterval(timer);
+          resolve();
+          return;
+        }
+
+        if (Date.now() - startedAt > 10000) {
+          window.clearInterval(timer);
+          reject(new Error("Google Maps SDK loaded but Map constructor did not become available."));
+        }
+      }, 100);
     };
 
     const handleError = () => {
@@ -66,7 +75,7 @@ function loadGoogleMapsScript(apiKey: string): Promise<void> {
 
     const script = document.createElement("script");
     script.id = GOOGLE_MAPS_SCRIPT_ID;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly&loading=async`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
     script.async = true;
     script.defer = true;
     script.addEventListener("load", handleLoad, { once: true });
