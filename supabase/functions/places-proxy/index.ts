@@ -97,6 +97,11 @@ const VIBE_CATEGORY_MAP: Record<string, PlaceCategory[]> = {
   romantic: ["dining", "historic", "attraction"],
 };
 
+const CITY_ALIASES: Record<string, string[]> = {
+  bangalore: ["bengaluru"],
+  bengaluru: ["bangalore"],
+};
+
 const FIELD_MASK = [
   "places.id",
   "places.displayName",
@@ -155,7 +160,7 @@ function buildTrendingQuery(context: DiscoveryContext): string {
 function buildServerCacheKey(endpoint: ProxyEndpoint, query: string, context: DiscoveryContext): string {
   if (endpoint === "search") {
     return [
-      "proxy-v1",
+      "proxy-v2",
       endpoint,
       normalizeText(query),
       normalizeText(context.city),
@@ -165,12 +170,36 @@ function buildServerCacheKey(endpoint: ProxyEndpoint, query: string, context: Di
   }
 
   return [
-    "proxy-v1",
+    "proxy-v2",
     endpoint,
     normalizeText(context.city),
     normalizeText(context.vibe),
     context.timeWindow,
   ].join("|");
+}
+
+function normalizeAddressToken(value: string): string {
+  return normalizeText(value).replace(/[^a-z0-9]/g, "");
+}
+
+function buildCityTokens(city: string): string[] {
+  const normalizedCity = normalizeText(city);
+  const aliases = CITY_ALIASES[normalizedCity] || [];
+  const tokens = [normalizedCity, ...aliases]
+    .map((token) => normalizeAddressToken(token))
+    .filter((token) => token.length > 2);
+
+  return Array.from(new Set(tokens));
+}
+
+function filterPlacesByCity(places: Place[], city: string): Place[] {
+  const cityTokens = buildCityTokens(city);
+  if (cityTokens.length === 0) return places;
+
+  return places.filter((place) => {
+    const normalizedAddress = normalizeAddressToken(place.address || "");
+    return cityTokens.some((token) => normalizedAddress.includes(token));
+  });
 }
 
 function mapGoogleTypeToCategory(types: string[]): PlaceCategory {
@@ -297,8 +326,10 @@ function mapGoogleResultsToPlaces(
     } satisfies Place;
   });
 
+  const cityScoped = filterPlacesByCity(mapped, context.city);
+
   if (endpoint !== "trending") {
-    return mapped.slice(0, 10);
+    return cityScoped.slice(0, 10);
   }
 
   const preferredCategories = VIBE_CATEGORY_MAP[normalizeText(context.vibe)] || [
@@ -307,8 +338,8 @@ function mapGoogleResultsToPlaces(
     "attraction",
   ];
 
-  const categoryScoped = mapped.filter((place) => preferredCategories.includes(place.category));
-  const sourcePool = categoryScoped.length >= 5 ? categoryScoped : mapped;
+  const categoryScoped = cityScoped.filter((place) => preferredCategories.includes(place.category));
+  const sourcePool = categoryScoped.length >= 5 ? categoryScoped : cityScoped;
 
   return shuffleArray(
     sourcePool

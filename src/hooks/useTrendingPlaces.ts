@@ -51,6 +51,11 @@ const VIBE_CATEGORY_MAP: Record<string, PlaceCategory[]> = {
   romantic: ['dining', 'historic', 'attraction'],
 };
 
+const CITY_ALIASES: Record<string, string[]> = {
+  bangalore: ['bengaluru'],
+  bengaluru: ['bangalore'],
+};
+
 function normalizeDiscoveryContext(
   contextOverrides?: Partial<DiscoveryContext>,
 ): DiscoveryContext {
@@ -81,6 +86,32 @@ function shuffleArray<T>(array: T[]): T[] {
   return newArr;
 }
 
+function normalizeAddressToken(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ').replace(/[^a-z0-9]/g, '');
+}
+
+function buildCityTokens(city: string): string[] {
+  const normalized = city.trim().toLowerCase();
+  const aliases = CITY_ALIASES[normalized] || [];
+  return Array.from(
+    new Set(
+      [normalized, ...aliases]
+        .map((token) => normalizeAddressToken(token))
+        .filter((token) => token.length > 2),
+    ),
+  );
+}
+
+function filterPlacesByCity(places: Place[], city: string): Place[] {
+  const tokens = buildCityTokens(city);
+  if (tokens.length === 0) return places;
+
+  return places.filter((place) => {
+    const normalizedAddress = normalizeAddressToken(place.address || '');
+    return tokens.some((token) => normalizedAddress.includes(token));
+  });
+}
+
 async function fetchTrendingWithPhoton(context: DiscoveryContext): Promise<Place[]> {
   const response = await fetch(
     `https://photon.komoot.io/api/?q=${encodeURIComponent(`${context.vibe} ${context.timeWindow} ${context.city}`)}&limit=15`,
@@ -90,7 +121,7 @@ async function fetchTrendingWithPhoton(context: DiscoveryContext): Promise<Place
   const data = await response.json();
   const randomPick = shuffleArray(data.features).slice(0, 5);
 
-  return randomPick.map((feature: any) => {
+  const mapped = randomPick.map((feature: any) => {
     const props = feature.properties;
     const addressParts = [props.street, props.city, props.state, props.country].filter(Boolean);
     const address = addressParts.join(', ') || 'Unknown Address';
@@ -108,6 +139,8 @@ async function fetchTrendingWithPhoton(context: DiscoveryContext): Promise<Place
       createdAt: new Date().toISOString(),
     };
   });
+
+  return filterPlacesByCity(mapped, context.city);
 }
 
 export function useTrendingPlaces(

@@ -18,7 +18,7 @@ type CacheStore = Record<string, CachedEntry>;
 
 const QUOTA_STORAGE_KEY = "basho-places-quota-v1";
 const CACHE_STORAGE_KEY = "basho-places-cache-v1";
-const CACHE_KEY_VERSION = "v2";
+const CACHE_KEY_VERSION = "v3";
 
 const DEFAULT_SEARCH_DAILY_LIMIT = Number(import.meta.env.VITE_PLACES_SEARCH_DAILY_LIMIT ?? 120);
 const DEFAULT_TRENDING_DAILY_LIMIT = Number(import.meta.env.VITE_PLACES_TRENDING_DAILY_LIMIT ?? 24);
