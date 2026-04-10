@@ -7,8 +7,6 @@ import {
 } from '@/types/places';
 import {
   buildPlacesCacheKey,
-  canUseGooglePlaces,
-  consumeGooglePlacesBudget,
   getCachedPlaces,
   getInFlightPlacesRequest,
   markPlacesNetworkRequest,
@@ -182,13 +180,11 @@ export function useTrendingPlaces(
       const networkRequest = (async () => {
         const shouldUseProxy =
           canUsePlacesProxy() &&
-          canUseGooglePlaces('trending') &&
           !shouldThrottlePlaces('trending', cacheKey);
 
         if (shouldUseProxy) {
           try {
             markPlacesNetworkRequest('trending', cacheKey);
-            consumeGooglePlacesBudget('trending');
 
             const proxyResults = await fetchPlacesFromProxy({
               endpoint: 'trending',
