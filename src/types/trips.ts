@@ -30,11 +30,32 @@ export interface SavedTripData extends SavedTripSummary {
 
 export interface SaveTripInput {
   tripId?: string | null;
+  expectedUpdatedAt?: string | null;
   name: string;
   settings: PlannerSettings;
   routeMode: RouteMode;
   planScore: number;
   items: TripBucketItem[];
+}
+
+export interface SaveTripResult {
+  id: string;
+  source: TripSource;
+  updatedAt: string;
+}
+
+export interface TripVersionSummary {
+  id: string;
+  tripId: string;
+  createdAt: string;
+  label: string;
+  source: TripSource;
+}
+
+export interface RestoreTripVersionInput {
+  tripId: string;
+  versionId: string;
+  expectedUpdatedAt?: string | null;
 }
 
 export interface ShareableTripStop {
@@ -87,12 +108,23 @@ export interface TripVoteInsight {
   placeName: string;
   score: number;
   voterCount: number;
+  upVotes: number;
+  downVotes: number;
+}
+
+export interface TripVoteActivity {
+  last24Hours: number;
+  previous24Hours: number;
+  direction: "up" | "down" | "flat";
 }
 
 export interface TripVoteInsights {
   totalVotes: number;
   top: TripVoteInsight | null;
   bottom: TripVoteInsight | null;
+  controversial: TripVoteInsight | null;
+  noVoteSuggestions: string[];
+  activity: TripVoteActivity;
 }
 
 export interface SuggestionAuditInput {

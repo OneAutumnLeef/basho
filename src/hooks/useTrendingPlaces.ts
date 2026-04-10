@@ -5,8 +5,20 @@ import {
   Place,
   PlaceCategory,
 } from '@/types/places';
+import {
+  buildPlacesCacheKey,
+  canUseGooglePlaces,
+  consumeGooglePlacesBudget,
+  getCachedPlaces,
+  getInFlightPlacesRequest,
+  markPlacesNetworkRequest,
+  setCachedPlaces,
+  setInFlightPlacesRequest,
+  shouldThrottlePlaces,
+} from '@/lib/places-traffic-control';
+import { canUsePlacesProxy, fetchPlacesFromProxy } from '@/lib/places-proxy-client';
 
-const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+const TRENDING_CACHE_TTL_MS = 1000 * 60 * 60 * 12;
 
 const DEFAULT_DISCOVERY_CONTEXT: DiscoveryContext = {
   city: 'Bangalore',
@@ -39,8 +51,6 @@ const VIBE_CATEGORY_MAP: Record<string, PlaceCategory[]> = {
   romantic: ['dining', 'historic', 'attraction'],
 };
 
-let placesServiceInstance: any = null;
-
 function normalizeDiscoveryContext(
   contextOverrides?: Partial<DiscoveryContext>,
 ): DiscoveryContext {
@@ -62,67 +72,6 @@ function buildTrendingQuery(context: DiscoveryContext): string {
   return `Top rated ${vibeHint} for ${timeHint} in ${context.city}`;
 }
 
-function initGoogleMapsService(): Promise<any> {
-  return new Promise((resolve, reject) => {
-    if ((window as any).google?.maps?.places) {
-      if (!placesServiceInstance) {
-        placesServiceInstance = new (window as any).google.maps.places.PlacesService(document.createElement('div'));
-      }
-      return resolve(placesServiceInstance);
-    }
-    
-    const existingScript = document.getElementById('google-maps-script');
-    if (existingScript) {
-      const interval = setInterval(() => {
-        if ((window as any).google?.maps?.places) {
-          clearInterval(interval);
-          placesServiceInstance = new (window as any).google.maps.places.PlacesService(document.createElement('div'));
-          resolve(placesServiceInstance);
-        }
-      }, 100);
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.id = 'google-maps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_API_KEY}&libraries=places,marker&v=weekly`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      placesServiceInstance = new (window as any).google.maps.places.PlacesService(document.createElement('div'));
-      resolve(placesServiceInstance);
-    };
-    script.onerror = () => {
-      reject(new Error("Failed to load Google Maps JS SDK"));
-    };
-    document.head.appendChild(script);
-  });
-}
-
-function mapGoogleTypeToCategory(types: string[]): PlaceCategory {
-  if (!types || types.length === 0) return 'other';
-
-  const typeMap: Record<string, PlaceCategory> = {
-    restaurant: 'dining',
-    cafe: 'cafe',
-    bar: 'dining',
-    lodging: 'accommodation',
-    hotel: 'accommodation',
-    museum: 'historic',
-    park: 'nature',
-    tourist_attraction: 'attraction',
-    airport: 'transport',
-    train_station: 'transport',
-    transit_station: 'transport',
-  };
-
-  for (const type of types) {
-    if (typeMap[type]) return typeMap[type];
-  }
-
-  return 'other';
-}
-
 function shuffleArray<T>(array: T[]): T[] {
   const newArr = [...array];
   for (let i = newArr.length - 1; i > 0; i--) {
@@ -132,94 +81,114 @@ function shuffleArray<T>(array: T[]): T[] {
   return newArr;
 }
 
-export function useTrendingPlaces(contextOverrides?: Partial<DiscoveryContext>) {
+async function fetchTrendingWithPhoton(context: DiscoveryContext): Promise<Place[]> {
+  const response = await fetch(
+    `https://photon.komoot.io/api/?q=${encodeURIComponent(`${context.vibe} ${context.timeWindow} ${context.city}`)}&limit=15`,
+  );
+  if (!response.ok) throw new Error('Photon search failed');
+
+  const data = await response.json();
+  const randomPick = shuffleArray(data.features).slice(0, 5);
+
+  return randomPick.map((feature: any) => {
+    const props = feature.properties;
+    const addressParts = [props.street, props.city, props.state, props.country].filter(Boolean);
+    const address = addressParts.join(', ') || 'Unknown Address';
+
+    return {
+      id: `trending-${props.osm_id || Math.random()}`,
+      originalId: props.osm_id?.toString(),
+      name: props.name || 'Unknown Place',
+      address,
+      lat: feature.geometry.coordinates[1],
+      lng: feature.geometry.coordinates[0],
+      category: 'dining',
+      rating: undefined,
+      tags: ['trending', normalizeVibeKey(context.vibe).replace(/\s+/g, '-'), context.timeWindow],
+      createdAt: new Date().toISOString(),
+    };
+  });
+}
+
+export function useTrendingPlaces(
+  contextOverrides?: Partial<DiscoveryContext>,
+  options?: { enabled?: boolean },
+) {
   const context = normalizeDiscoveryContext(contextOverrides);
   const preferredCategories =
     VIBE_CATEGORY_MAP[normalizeVibeKey(context.vibe)] ||
     ['dining', 'cafe', 'attraction'];
+  const cacheKey = buildPlacesCacheKey('trending', [context.city, context.vibe, context.timeWindow]);
+  const isEnabled = options?.enabled ?? true;
 
   return useQuery({
     queryKey: ['trendingPlaces', context.city, context.vibe, context.timeWindow],
     queryFn: async (): Promise<Place[]> => {
-      if (GOOGLE_API_KEY) {
-        const service = await initGoogleMapsService();
-        return new Promise<Place[]>((resolve, reject) => {
-          service.textSearch({ query: buildTrendingQuery(context) }, (results: any[], status: string) => {
-            if (status !== 'OK' && status !== 'ZERO_RESULTS') {
-              console.error("Google Places Error:", status);
-              return reject(new Error(`Google Places API returned status: ${status}`));
-            }
-            if (!results) return resolve([]);
+      if (context.city.trim().length < 2) {
+        return [];
+      }
 
-            const mappedPlaces = results.map((p) => {
-              let imageUrl = undefined;
-              if (p.photos && p.photos.length > 0) {
-                imageUrl = p.photos[0].getUrl({ maxWidth: 400 });
-              }
+      const cachedResults = getCachedPlaces(cacheKey);
+      if (cachedResults) {
+        return cachedResults;
+      }
 
-              const vibeTag = normalizeVibeKey(context.vibe).replace(/\s+/g, '-');
+      const inFlight = getInFlightPlacesRequest(cacheKey);
+      if (inFlight) {
+        return inFlight;
+      }
 
-              return {
-                id: `google-trending-${p.place_id}`,
-                originalId: p.place_id,
-                name: p.name || 'Unknown Place',
-                address: p.formatted_address || 'Unknown Address',
-                lat: p.geometry?.location?.lat() || 0,
-                lng: p.geometry?.location?.lng() || 0,
-                category: mapGoogleTypeToCategory(p.types || []),
-                rating: p.rating,
-                imageUrl,
-                tags: ['trending', vibeTag, context.timeWindow],
-                createdAt: new Date().toISOString(),
-              };
+      const networkRequest = (async () => {
+        const shouldUseProxy =
+          canUsePlacesProxy() &&
+          canUseGooglePlaces('trending') &&
+          !shouldThrottlePlaces('trending');
+
+        if (shouldUseProxy) {
+          try {
+            markPlacesNetworkRequest('trending');
+            consumeGooglePlacesBudget('trending');
+
+            const proxyResults = await fetchPlacesFromProxy({
+              endpoint: 'trending',
+              context,
+              query: buildTrendingQuery(context),
             });
 
-            const categoryScoped = mappedPlaces.filter((place) =>
-              preferredCategories.includes(place.category),
-            );
+            let scopedResults = proxyResults;
+            if (proxyResults.length > 0) {
+              const categoryScoped = proxyResults.filter((place) =>
+                preferredCategories.includes(place.category),
+              );
+              const sourcePool = categoryScoped.length >= 5 ? categoryScoped : proxyResults;
 
-            const sourcePool = categoryScoped.length >= 5 ? categoryScoped : mappedPlaces;
-            const randomizedTop = shuffleArray(
-              sourcePool
-                .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
-                .slice(0, 12),
-            ).slice(0, 6);
+              scopedResults = shuffleArray(
+                sourcePool
+                  .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
+                  .slice(0, 12),
+              ).slice(0, 6);
+            }
 
-            resolve(randomizedTop);
-          });
-        });
-      } else {
-        // Fallback to Photon
-        const res = await fetch(
-          `https://photon.komoot.io/api/?q=${encodeURIComponent(`${context.vibe} ${context.timeWindow} ${context.city}`)}&limit=15`,
-        );
-        if (!res.ok) throw new Error('Photon search failed');
-        const data = await res.json();
-        
-        const randomPick = shuffleArray(data.features).slice(0, 5);
-        
-        return randomPick.map((f: any) => {
-          const p = f.properties;
-          const addressParts = [p.street, p.city, p.state, p.country].filter(Boolean);
-          const address = addressParts.join(', ') || 'Unknown Address';
+            setCachedPlaces(cacheKey, scopedResults, TRENDING_CACHE_TTL_MS);
+            return scopedResults;
+          } catch (error) {
+            console.warn('Places proxy trending lookup failed, using fallback provider.', error);
+          }
+        }
 
-          return {
-            id: `trending-${p.osm_id || Math.random()}`,
-            originalId: p.osm_id?.toString(),
-            name: p.name || 'Unknown Place',
-            address,
-            lat: f.geometry.coordinates[1],
-            lng: f.geometry.coordinates[0],
-            category: 'dining',
-            rating: undefined,
-            tags: ['trending', normalizeVibeKey(context.vibe).replace(/\s+/g, '-'), context.timeWindow],
-            createdAt: new Date().toISOString(),
-          };
-        });
-      }
+        const fallbackResults = await fetchTrendingWithPhoton(context);
+        setCachedPlaces(cacheKey, fallbackResults, TRENDING_CACHE_TTL_MS);
+        return fallbackResults;
+      })();
+
+      return setInFlightPlacesRequest(cacheKey, networkRequest);
     },
-    // Keep it cached to prevent burning quota on every refresh!
-    staleTime: 1000 * 60 * 60 * 12, 
-    gcTime: 1000 * 60 * 60 * 12,
+    enabled: isEnabled,
+    staleTime: TRENDING_CACHE_TTL_MS,
+    gcTime: TRENDING_CACHE_TTL_MS,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+    retry: 1,
   });
 }

@@ -12,10 +12,10 @@ import {
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle, ChevronRight, Clock, Download, GripVertical, LogIn, LogOut, Navigation, Route, Save, Share2, ThumbsDown, ThumbsUp, WandSparkles, X } from "lucide-react";
+import { AlertTriangle, ChevronRight, Clock, Download, GripVertical, LogIn, LogOut, Minus, Navigation, RotateCcw, Route, Save, Share2, ThumbsDown, ThumbsUp, TrendingDown, TrendingUp, WandSparkles, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { TRIP_WARNING_METADATA } from "@/lib/planner";
-import { SavedTripSummary, TripVoteInsights, TripVoteSummary } from "@/types/trips";
+import { SavedTripSummary, TripVersionSummary, TripVoteInsights, TripVoteSummary } from "@/types/trips";
 
 interface TripBucketProps {
   items: TripBucketItem[];
@@ -42,9 +42,15 @@ interface TripBucketProps {
   onSaveTrip?: () => void | Promise<void>;
   onLoadTrip?: () => void | Promise<void>;
   onShareTrip?: () => void;
+  tripVersions?: TripVersionSummary[];
+  selectedVersionId?: string | null;
+  onSelectedVersionIdChange?: (versionId: string) => void;
+  onRestoreTripVersion?: () => void | Promise<void>;
   isSavingTrip?: boolean;
   isLoadingTripLibrary?: boolean;
   isLoadingSelectedTrip?: boolean;
+  isLoadingTripVersions?: boolean;
+  isRestoringTripVersion?: boolean;
   voteSummaryByPlaceKey?: Record<string, TripVoteSummary>;
   onVotePlace?: (placeKey: string, placeName: string, vote: -1 | 1) => void;
   isVoting?: boolean;
@@ -65,6 +71,11 @@ function formatDuration(totalMinutes: number): string {
   if (hours <= 0) return `${minutes} min`;
   if (minutes === 0) return `${hours}h`;
   return `${hours}h ${minutes}m`;
+}
+
+function formatVersionOption(version: TripVersionSummary): string {
+  const formatted = new Date(version.createdAt).toLocaleString();
+  return `${version.label} · ${formatted}`;
 }
 
 function SortableItem({
@@ -256,9 +267,15 @@ export default function TripBucket({
   onSaveTrip,
   onLoadTrip,
   onShareTrip,
+  tripVersions = [],
+  selectedVersionId,
+  onSelectedVersionIdChange,
+  onRestoreTripVersion,
   isSavingTrip,
   isLoadingTripLibrary,
   isLoadingSelectedTrip,
+  isLoadingTripVersions,
+  isRestoringTripVersion,
   voteSummaryByPlaceKey = {},
   onVotePlace,
   isVoting,
@@ -395,6 +412,31 @@ export default function TripBucket({
                   </option>
                 ))}
               </select>
+
+              <div className="grid grid-cols-[1fr_auto] gap-1.5 sm:gap-2">
+                <select
+                  value={selectedVersionId || ""}
+                  onChange={(event) => onSelectedVersionIdChange?.(event.target.value)}
+                  className="h-9 w-full rounded-lg border border-white/10 bg-black/30 px-2.5 text-xs font-semibold text-white outline-none focus:border-primary/50"
+                >
+                  <option value="">
+                    {isLoadingTripVersions ? "Loading restore points..." : "Select restore point..."}
+                  </option>
+                  {tripVersions.map((version) => (
+                    <option key={version.id} value={version.id}>
+                      {formatVersionOption(version)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={onRestoreTripVersion}
+                  disabled={Boolean(isRestoringTripVersion) || !selectedVersionId}
+                  className="inline-flex h-9 items-center justify-center gap-1 rounded-md border border-amber-300/35 bg-amber-500/15 px-2.5 text-[10px] font-semibold uppercase tracking-wide text-amber-100 transition-colors hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {isRestoringTripVersion ? "Restoring" : "Restore"}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -508,6 +550,25 @@ export default function TripBucket({
                 </p>
               </div>
 
+              <div className="mt-2 rounded-md border border-sky-400/20 bg-sky-500/10 px-2.5 py-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-sky-200/85">24h Vote Trend</p>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-100">
+                    {voteInsights?.activity.direction === "up" ? <TrendingUp className="h-3 w-3" /> : null}
+                    {voteInsights?.activity.direction === "down" ? <TrendingDown className="h-3 w-3" /> : null}
+                    {voteInsights?.activity.direction === "flat" ? <Minus className="h-3 w-3" /> : null}
+                    {voteInsights?.activity.direction === "up"
+                      ? "Rising"
+                      : voteInsights?.activity.direction === "down"
+                        ? "Cooling"
+                        : "Steady"}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-[10px] text-sky-200/80">
+                  Last 24h {voteInsights?.activity.last24Hours ?? 0} · Previous 24h {voteInsights?.activity.previous24Hours ?? 0}
+                </p>
+              </div>
+
               {voteInsights?.top ? (
                 <div className="mt-2 rounded-md border border-emerald-400/20 bg-emerald-500/10 px-2.5 py-2">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-200/85">Top Voted</p>
@@ -523,6 +584,25 @@ export default function TripBucket({
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-rose-200/85">Needs Love</p>
                   <p className="truncate text-xs font-semibold text-rose-100 mt-0.5">{voteInsights.bottom.placeName}</p>
                   <p className="text-[10px] text-rose-200/80 mt-0.5">Score {voteInsights.bottom.score} · {voteInsights.bottom.voterCount} voters</p>
+                </div>
+              ) : null}
+
+              {voteInsights?.controversial ? (
+                <div className="mt-2 rounded-md border border-amber-300/25 bg-amber-500/10 px-2.5 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-100/90">Most Controversial</p>
+                  <p className="truncate text-xs font-semibold text-amber-50 mt-0.5">{voteInsights.controversial.placeName}</p>
+                  <p className="text-[10px] text-amber-100/80 mt-0.5">
+                    {voteInsights.controversial.upVotes} up · {voteInsights.controversial.downVotes} down
+                  </p>
+                </div>
+              ) : null}
+
+              {voteInsights?.noVoteSuggestions?.length ? (
+                <div className="mt-2 rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-white/65">No Votes Yet</p>
+                  <p className="mt-0.5 text-[10px] text-white/70">
+                    Ask collaborators to vote on {voteInsights.noVoteSuggestions.join(", ")}
+                  </p>
                 </div>
               ) : null}
 

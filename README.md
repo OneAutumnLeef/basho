@@ -29,8 +29,8 @@ The map is the interface. Everything is built around it.
 ## Features
 
 - **Google Maps (Vector)** — Full Google Maps JS SDK with a custom dark cloud style via Map ID. Smooth vector rendering, not raster tiles.
-- **Google Places Search** — Live place search powered by the Places API. Real thumbnails, real ratings, real addresses.
-- **Trending Feed** — On load, 5 random top-rated restobars in Bangalore are fetched and pinned dynamically. No hardcoded data.
+- **Google Places Search (Proxy-First)** — Place discovery now routes through a Supabase Edge Function with shared cache + centralized rate controls before falling back.
+- **Trending Feed** — Trending recommendations are cached and rate-limited server-side to reduce multi-user quota burn.
 - **Category Markers** — Custom emoji-based markers per category (🍽️ dining, ☕ cafe, 🏛️ historic, etc.) with glow effects on selection.
 - **Time-Aware Trip Bucket** — Drag places into your Trip Bucket, set dwell time per stop, and preview arrivals/departures.
 - **Plan Quality Score** — Live score for feasibility, pacing, efficiency, and variety with warning badges on weak legs.
@@ -50,7 +50,7 @@ The map is the interface. Everything is built around it.
 | Styling | Tailwind CSS + shadcn/ui |
 | Animation | Framer Motion |
 | Map | Google Maps JS SDK (Vector, Map ID) |
-| Places & Search | Google Places API |
+| Places & Search | Google Places API (via Supabase Edge Function proxy + shared cache) |
 | Drag & Drop | dnd-kit |
 | State / Fetching | TanStack React Query |
 | Backend | Supabase (PostgreSQL) |
@@ -73,6 +73,7 @@ Create a `.env.local` file:
 VITE_SUPABASE_URL=https://<your-project>.supabase.co
 VITE_SUPABASE_ANON_KEY=<your-anon-key>
 VITE_GOOGLE_MAPS_API_KEY=<your-google-maps-api-key>
+VITE_DISABLE_PLACES_PROXY=false
 ```
 
 ```bash
@@ -89,9 +90,51 @@ Navigate to `http://localhost:3000/`
 |---|---|---|
 | `VITE_SUPABASE_URL` | Yes | Your Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Yes | Supabase anon public key |
-| `VITE_GOOGLE_MAPS_API_KEY` | Yes | Google Maps JS + Places API key |
+| `VITE_GOOGLE_MAPS_API_KEY` | Yes | Google Maps JS key for map rendering |
+| `VITE_DISABLE_PLACES_PROXY` | No | Set `true` to bypass Edge Function proxy and use fallback providers only |
+| `VITE_DISABLE_LIVE_PLACES` | No | Set `true` to disable live Google Places calls and use fallback providers only |
+| `VITE_PLACES_SEARCH_DAILY_LIMIT` | No | Per-browser daily cap for live Google search requests (default: `120`) |
+| `VITE_PLACES_TRENDING_DAILY_LIMIT` | No | Per-browser daily cap for live Google trending requests (default: `24`) |
+| `VITE_PLACES_SEARCH_COOLDOWN_MS` | No | Minimum interval between live Google search requests (default: `2500`) |
+| `VITE_PLACES_TRENDING_COOLDOWN_MS` | No | Minimum interval between live Google trending requests (default: `300000`) |
+| `VITE_PLACES_CACHE_MAX_ENTRIES` | No | Max retained cached places payloads in local storage (default: `180`) |
 
 For GitHub Actions deployment, add `VITE_GOOGLE_MAPS_API_KEY` as a **Repository Secret** under Settings → Secrets → Actions.
+
+---
+
+## Places Proxy Setup (Recommended)
+
+The repo now includes a server-side proxy at `supabase/functions/places-proxy` plus cache/rate-limit tables in `supabase/migrations/04_places_proxy_cache.sql`.
+
+Apply migrations and deploy the function:
+
+```bash
+supabase db push
+supabase functions deploy places-proxy
+```
+
+Set function secrets (required):
+
+```bash
+supabase secrets set SERVICE_ROLE_KEY=<service-role-key>
+supabase secrets set GOOGLE_PLACES_SERVER_API_KEY=<server-places-api-key>
+```
+
+`SERVICE_ROLE_KEY` is the recommended secret name for this function. `SUPABASE_SERVICE_ROLE_KEY` is also supported as a fallback.
+
+Security note: the Edge Function keeps `GOOGLE_PLACES_SERVER_API_KEY` server-side and does not return it in response payloads. Media URLs are resolved client-side with `VITE_GOOGLE_MAPS_API_KEY`.
+
+Optional function-level tuning secrets:
+
+| Variable | Default | Description |
+|---|---|---|
+| `PLACES_PROXY_SEARCH_DAILY_CLIENT_LIMIT` | `80` | Per-client search misses/day before proxy returns 429 or stale cache |
+| `PLACES_PROXY_TRENDING_DAILY_CLIENT_LIMIT` | `20` | Per-client trending misses/day |
+| `PLACES_PROXY_SEARCH_DAILY_GLOBAL_LIMIT` | `700` | Global search misses/day across all clients |
+| `PLACES_PROXY_TRENDING_DAILY_GLOBAL_LIMIT` | `200` | Global trending misses/day across all clients |
+| `PLACES_PROXY_SEARCH_TTL_SECONDS` | `86400` | Shared cache TTL for search responses |
+| `PLACES_PROXY_TRENDING_TTL_SECONDS` | `43200` | Shared cache TTL for trending responses |
 
 ---
 
@@ -100,7 +143,7 @@ For GitHub Actions deployment, add `VITE_GOOGLE_MAPS_API_KEY` as a **Repository 
 Enable these in your Google Cloud Console project:
 
 - ✅ Maps JavaScript API
-- ✅ Places API
+- ✅ Places API (New)
 
 The Map ID for the custom dark vector style is configured at: **Maps Platform → Map Management**.
 

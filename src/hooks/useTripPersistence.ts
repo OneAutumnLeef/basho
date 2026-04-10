@@ -2,15 +2,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Place, PlannerSettings, RouteMode, TripBucketItem } from "@/types/places";
 import {
+  RestoreTripVersionInput,
   SaveTripInput,
+  SaveTripResult,
   SavedTripData,
   SavedTripSummary,
   SuggestionAuditInput,
-  TripSource,
+  TripVersionSummary,
 } from "@/types/trips";
 
 const LOCAL_TRIPS_KEY = "basho-local-trips-v1";
 const LOCAL_SUGGESTION_AUDIT_KEY = "basho-local-suggestion-audit-v1";
+const LOCAL_TRIP_VERSIONS_KEY = "basho-local-trip-versions-v1";
+const MAX_TRIP_VERSIONS_PER_TRIP = 20;
 
 const EMPTY_SETTINGS: PlannerSettings = {
   city: "Bangalore",
@@ -64,6 +68,45 @@ interface TripItemRow {
   place_rating: number | null;
 }
 
+interface TripVersionSnapshot {
+  name: string;
+  settings: PlannerSettings;
+  routeMode: RouteMode;
+  planScore: number;
+  items: TripBucketItem[];
+  updatedAt: string;
+}
+
+interface LocalTripVersionRecord {
+  id: string;
+  tripId: string;
+  createdAt: string;
+  label: string;
+  snapshot: TripVersionSnapshot;
+}
+
+type LocalTripVersionsStore = Record<string, LocalTripVersionRecord[]>;
+
+interface TripVersionRow {
+  id: string;
+  trip_id: string;
+  label: string | null;
+  created_at: string;
+  snapshot_json: unknown;
+}
+
+export class TripSaveConflictError extends Error {
+  tripId: string;
+  latestUpdatedAt: string | null;
+
+  constructor(tripId: string, latestUpdatedAt: string | null) {
+    super("Trip was updated in another session. Reload the latest version and retry.");
+    this.name = "TripSaveConflictError";
+    this.tripId = tripId;
+    this.latestUpdatedAt = latestUpdatedAt;
+  }
+}
+
 function isSupabaseConfigured(): boolean {
   return Boolean(import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY);
 }
@@ -97,6 +140,133 @@ function appendLocalSuggestionAudit(entry: SuggestionAuditInput): void {
   } catch {
     // Best-effort local telemetry; ignore storage serialization errors.
   }
+}
+
+function safeReadLocalTripVersions(): LocalTripVersionsStore {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const raw = window.localStorage.getItem(LOCAL_TRIP_VERSIONS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as LocalTripVersionsStore;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function safeWriteLocalTripVersions(store: LocalTripVersionsStore): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(LOCAL_TRIP_VERSIONS_KEY, JSON.stringify(store));
+}
+
+function cloneTripItems(items: TripBucketItem[]): TripBucketItem[] {
+  return items.map((item) => ({
+    ...item,
+    place: {
+      ...item.place,
+      tags: [...(item.place.tags || [])],
+    },
+  }));
+}
+
+function buildTripVersionSnapshot(input: SaveTripInput, updatedAt: string): TripVersionSnapshot {
+  return {
+    name: input.name,
+    settings: {
+      ...input.settings,
+    },
+    routeMode: input.routeMode,
+    planScore: input.planScore,
+    items: cloneTripItems(input.items),
+    updatedAt,
+  };
+}
+
+function mapLocalVersionToSummary(version: LocalTripVersionRecord): TripVersionSummary {
+  return {
+    id: version.id,
+    tripId: version.tripId,
+    createdAt: version.createdAt,
+    label: version.label,
+    source: "local",
+  };
+}
+
+function appendLocalTripVersion(tripId: string, input: SaveTripInput, updatedAt: string): void {
+  const store = safeReadLocalTripVersions();
+  const existing = store[tripId] || [];
+  const createdAt = new Date().toISOString();
+
+  const nextVersion: LocalTripVersionRecord = {
+    id: `local-version-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    tripId,
+    createdAt,
+    label: `Saved ${new Date(createdAt).toLocaleString()}`,
+    snapshot: buildTripVersionSnapshot(input, updatedAt),
+  };
+
+  store[tripId] = [nextVersion, ...existing].slice(0, MAX_TRIP_VERSIONS_PER_TRIP);
+  safeWriteLocalTripVersions(store);
+}
+
+function getLocalTripVersionSummaries(tripId: string): TripVersionSummary[] {
+  const store = safeReadLocalTripVersions();
+  const versions = store[tripId] || [];
+  return versions.map(mapLocalVersionToSummary);
+}
+
+function getLocalTripVersionSnapshot(
+  tripId: string,
+  versionId: string,
+): TripVersionSnapshot | null {
+  const store = safeReadLocalTripVersions();
+  const version = (store[tripId] || []).find((entry) => entry.id === versionId);
+  return version?.snapshot || null;
+}
+
+function parseTripVersionSnapshot(raw: unknown): TripVersionSnapshot | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  const candidate = raw as Partial<TripVersionSnapshot>;
+  if (!candidate.name || typeof candidate.name !== "string") return null;
+  if (!candidate.settings || typeof candidate.settings !== "object") return null;
+  if (candidate.routeMode !== "fixed" && candidate.routeMode !== "optimize") return null;
+  if (typeof candidate.planScore !== "number") return null;
+  if (!Array.isArray(candidate.items)) return null;
+
+  return {
+    name: candidate.name,
+    settings: {
+      city: candidate.settings.city || EMPTY_SETTINGS.city,
+      vibe: candidate.settings.vibe || EMPTY_SETTINGS.vibe,
+      startTime: candidate.settings.startTime || EMPTY_SETTINGS.startTime,
+      timeWindow: candidate.settings.timeWindow || EMPTY_SETTINGS.timeWindow,
+      pace: candidate.settings.pace || EMPTY_SETTINGS.pace,
+    },
+    routeMode: candidate.routeMode,
+    planScore: candidate.planScore,
+    items: cloneTripItems(candidate.items as TripBucketItem[]),
+    updatedAt: typeof candidate.updatedAt === "string"
+      ? candidate.updatedAt
+      : new Date().toISOString(),
+  };
+}
+
+function buildSaveInputFromSnapshot(
+  tripId: string,
+  snapshot: TripVersionSnapshot,
+  expectedUpdatedAt?: string | null,
+): SaveTripInput {
+  return {
+    tripId,
+    expectedUpdatedAt,
+    name: snapshot.name,
+    settings: snapshot.settings,
+    routeMode: snapshot.routeMode,
+    planScore: snapshot.planScore,
+    items: cloneTripItems(snapshot.items),
+  };
 }
 
 function mapStoredToSummary(stored: StoredLocalTrip): SavedTripSummary {
@@ -149,7 +319,7 @@ function createLocalTripRecord(input: SaveTripInput, tripId?: string): StoredLoc
   };
 }
 
-function upsertLocalTrip(input: SaveTripInput): { id: string; source: TripSource } {
+function upsertLocalTrip(input: SaveTripInput): SaveTripResult {
   const trips = safeReadLocalTrips();
   const existingIndex = input.tripId
     ? trips.findIndex((trip) => trip.id === input.tripId)
@@ -164,13 +334,15 @@ function upsertLocalTrip(input: SaveTripInput): { id: string; source: TripSource
     };
     trips.splice(existingIndex, 1, updated);
     safeWriteLocalTrips(trips);
-    return { id: updated.id, source: "local" };
+    appendLocalTripVersion(updated.id, input, updated.updatedAt);
+    return { id: updated.id, source: "local", updatedAt: updated.updatedAt };
   }
 
   const created = createLocalTripRecord(input);
   trips.unshift(created);
   safeWriteLocalTrips(trips);
-  return { id: created.id, source: "local" };
+  appendLocalTripVersion(created.id, input, created.updatedAt);
+  return { id: created.id, source: "local", updatedAt: created.updatedAt };
 }
 
 function loadLocalTrip(tripId: string): SavedTripData | null {
@@ -215,6 +387,28 @@ function mapTripItemRowToBucketItem(row: TripItemRow, index: number): TripBucket
   };
 }
 
+async function appendCloudTripVersion(
+  tripId: string,
+  input: SaveTripInput,
+  updatedAt: string,
+): Promise<void> {
+  try {
+    const snapshot = buildTripVersionSnapshot(input, updatedAt);
+    const { error } = await supabase.from("trip_versions").insert({
+      trip_id: tripId,
+      label: `Saved ${new Date().toLocaleString()}`,
+      snapshot_json: snapshot,
+    });
+
+    if (error) {
+      throw error;
+    }
+  } catch (error) {
+    // Version history should not block primary save behavior.
+    console.warn("Trip version snapshot write skipped:", error);
+  }
+}
+
 async function canUseCloudTrips(): Promise<boolean> {
   if (!isSupabaseConfigured()) return false;
   const {
@@ -223,7 +417,7 @@ async function canUseCloudTrips(): Promise<boolean> {
   return Boolean(session?.user);
 }
 
-export function useTripPersistence() {
+export function useTripPersistence(activeTripId?: string | null) {
   const queryClient = useQueryClient();
 
   const tripLibraryQuery = useQuery({
@@ -272,8 +466,47 @@ export function useTripPersistence() {
     },
   });
 
+  const tripVersionsQuery = useQuery({
+    queryKey: ["trip-versions", activeTripId],
+    enabled: Boolean(activeTripId),
+    queryFn: async (): Promise<TripVersionSummary[]> => {
+      if (!activeTripId) return [];
+
+      if (activeTripId.startsWith("local-")) {
+        return getLocalTripVersionSummaries(activeTripId);
+      }
+
+      const useCloud = await canUseCloudTrips();
+      if (!useCloud) {
+        return [];
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("trip_versions")
+          .select("id,trip_id,label,created_at")
+          .eq("trip_id", activeTripId)
+          .order("created_at", { ascending: false })
+          .limit(MAX_TRIP_VERSIONS_PER_TRIP);
+
+        if (error) throw error;
+
+        return ((data || []) as Array<Omit<TripVersionRow, "snapshot_json">>).map((row) => ({
+          id: row.id,
+          tripId: row.trip_id,
+          createdAt: row.created_at,
+          label: row.label || `Saved ${new Date(row.created_at).toLocaleString()}`,
+          source: "cloud",
+        }));
+      } catch (error) {
+        console.warn("Trip versions unavailable:", error);
+        return [];
+      }
+    },
+  });
+
   const saveTripMutation = useMutation({
-    mutationFn: async (input: SaveTripInput): Promise<{ id: string; source: TripSource }> => {
+    mutationFn: async (input: SaveTripInput): Promise<SaveTripResult> => {
       const useCloud = await canUseCloudTrips();
 
       if (!useCloud) {
@@ -290,9 +523,11 @@ export function useTripPersistence() {
         }
 
         let tripId = input.tripId || "";
+        let persistedUpdatedAt = new Date().toISOString();
 
         if (tripId && !tripId.startsWith("local-")) {
-          const { error: updateError } = await supabase
+          const nextUpdatedAt = new Date().toISOString();
+          let updateQuery = supabase
             .from("trips")
             .update({
               name: input.name,
@@ -303,12 +538,31 @@ export function useTripPersistence() {
               pace: input.settings.pace,
               route_mode: input.routeMode,
               plan_score: input.planScore,
-              updated_at: new Date().toISOString(),
+              updated_at: nextUpdatedAt,
             })
             .eq("id", tripId)
             .eq("owner_user_id", session.user.id);
 
+          if (input.expectedUpdatedAt) {
+            updateQuery = updateQuery.eq("updated_at", input.expectedUpdatedAt);
+          }
+
+          const { data: updatedRows, error: updateError } = await updateQuery
+            .select("id,updated_at");
+
           if (updateError) throw updateError;
+
+          if (!updatedRows || updatedRows.length === 0) {
+            const { data: latestTrip } = await supabase
+              .from("trips")
+              .select("updated_at")
+              .eq("id", tripId)
+              .maybeSingle();
+
+            throw new TripSaveConflictError(tripId, latestTrip?.updated_at ?? null);
+          }
+
+          persistedUpdatedAt = (updatedRows[0] as { updated_at: string }).updated_at;
         } else {
           const { data: inserted, error: insertError } = await supabase
             .from("trips")
@@ -323,11 +577,12 @@ export function useTripPersistence() {
               route_mode: input.routeMode,
               plan_score: input.planScore,
             })
-            .select("id")
+            .select("id,updated_at")
             .single();
 
           if (insertError) throw insertError;
           tripId = (inserted as { id: string }).id;
+          persistedUpdatedAt = (inserted as { updated_at: string }).updated_at;
         }
 
         const { error: deleteItemsError } = await supabase
@@ -359,14 +614,21 @@ export function useTripPersistence() {
           if (insertItemsError) throw insertItemsError;
         }
 
-        return { id: tripId, source: "cloud" };
+        await appendCloudTripVersion(tripId, input, persistedUpdatedAt);
+
+        return { id: tripId, source: "cloud", updatedAt: persistedUpdatedAt };
       } catch (error) {
+        if (error instanceof TripSaveConflictError) {
+          throw error;
+        }
+
         console.warn("Trip save fallback to local storage:", error);
         return upsertLocalTrip(input);
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["trip-library"] });
+      queryClient.invalidateQueries({ queryKey: ["trip-versions"] });
     },
   });
 
@@ -426,6 +688,54 @@ export function useTripPersistence() {
     },
   });
 
+  const restoreTripVersionMutation = useMutation({
+    mutationFn: async (input: RestoreTripVersionInput): Promise<SavedTripData | null> => {
+      if (input.tripId.startsWith("local-")) {
+        const snapshot = getLocalTripVersionSnapshot(input.tripId, input.versionId);
+        if (!snapshot) return null;
+
+        const restoredResult = upsertLocalTrip(
+          buildSaveInputFromSnapshot(input.tripId, snapshot, input.expectedUpdatedAt),
+        );
+
+        return loadLocalTrip(restoredResult.id);
+      }
+
+      const useCloud = await canUseCloudTrips();
+      if (!useCloud) {
+        return null;
+      }
+
+      const { data, error } = await supabase
+        .from("trip_versions")
+        .select("snapshot_json")
+        .eq("id", input.versionId)
+        .eq("trip_id", input.tripId)
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const snapshot = parseTripVersionSnapshot(
+        (data as { snapshot_json: unknown }).snapshot_json,
+      );
+      if (!snapshot) {
+        throw new Error("Restore snapshot payload is invalid.");
+      }
+
+      const saveResult = await saveTripMutation.mutateAsync(
+        buildSaveInputFromSnapshot(input.tripId, snapshot, input.expectedUpdatedAt),
+      );
+
+      return loadTripMutation.mutateAsync(saveResult.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["trip-library"] });
+      queryClient.invalidateQueries({ queryKey: ["trip-versions"] });
+    },
+  });
+
   const logSuggestionAuditMutation = useMutation({
     mutationFn: async (input: SuggestionAuditInput): Promise<void> => {
       if (!input.tripId || input.tripId.startsWith("local-")) {
@@ -459,10 +769,14 @@ export function useTripPersistence() {
   return {
     tripSummaries: tripLibraryQuery.data ?? [],
     isLoadingTripLibrary: tripLibraryQuery.isLoading,
+    tripVersions: tripVersionsQuery.data ?? [],
+    isLoadingTripVersions: tripVersionsQuery.isLoading,
     saveTrip: saveTripMutation.mutateAsync,
     isSavingTrip: saveTripMutation.isPending,
     loadTrip: loadTripMutation.mutateAsync,
     isLoadingSelectedTrip: loadTripMutation.isPending,
+    restoreTripVersion: restoreTripVersionMutation.mutateAsync,
+    isRestoringTripVersion: restoreTripVersionMutation.isPending,
     logSuggestionAudit: logSuggestionAuditMutation.mutateAsync,
     isLoggingSuggestionAudit: logSuggestionAuditMutation.isPending,
   };

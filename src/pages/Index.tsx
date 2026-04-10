@@ -23,7 +23,7 @@ import { usePlaces } from "@/hooks/usePlaces";
 import { useFriends } from "@/hooks/useFriends";
 import { usePlaceSearch } from "@/hooks/usePlaceSearch";
 import { useSavePlace } from "@/hooks/useSavePlace";
-import { useTripPersistence } from "@/hooks/useTripPersistence";
+import { TripSaveConflictError, useTripPersistence } from "@/hooks/useTripPersistence";
 import { useTripVotes } from "@/hooks/useTripVotes";
 import { supabase } from "@/integrations/supabase/client";
 import { useTrendingPlaces } from "@/hooks/useTrendingPlaces";
@@ -46,9 +46,9 @@ import { APP_BASE_PATH, getAuthRedirectUrl } from "@/lib/app-url";
 import {
   ShareableTripPayload,
   ShareableTripStop,
-  TripVoteInsight,
   TripVoteInsights,
 } from "@/types/trips";
+import { buildTripVoteInsights } from "@/lib/vote-insights";
 
 const DEFAULT_PLANNER_SETTINGS: PlannerSettings = {
   city: "Bangalore",
@@ -57,6 +57,10 @@ const DEFAULT_PLANNER_SETTINGS: PlannerSettings = {
   timeWindow: "evening",
   pace: "balanced",
 };
+
+const SEARCH_DEBOUNCE_MS = 900;
+const DISCOVERY_CONTEXT_DEBOUNCE_MS = 1000;
+const SEARCH_MIN_QUERY_LENGTH = 4;
 
 function normalizeBucketOrder(items: TripBucketItem[]): TripBucketItem[] {
   return items.map((item, order) => ({ ...item, order }));
@@ -109,7 +113,9 @@ const Index = () => {
   const [routeMode, setRouteMode] = useState<RouteMode>("optimize");
   const [tripName, setTripName] = useState("My Basho Plan");
   const [currentTripId, setCurrentTripId] = useState<string | null>(null);
+  const [currentTripUpdatedAt, setCurrentTripUpdatedAt] = useState<string | null>(null);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [tripGuideOpen, setTripGuideOpen] = useState(false);
   const [sharePayload, setSharePayload] = useState<ShareableTripPayload | null>(null);
@@ -118,18 +124,31 @@ const Index = () => {
   const [authEmail, setAuthEmail] = useState<string | null>(null);
   const [isAuthActionPending, setIsAuthActionPending] = useState(false);
 
+  const activePersistenceTripId = currentTripId || selectedTripId;
+
   const {
     tripSummaries,
     isLoadingTripLibrary,
+    tripVersions,
+    isLoadingTripVersions,
     saveTrip,
     isSavingTrip,
     loadTrip,
     isLoadingSelectedTrip,
+    restoreTripVersion,
+    isRestoringTripVersion,
     logSuggestionAudit,
-  } = useTripPersistence();
+  } = useTripPersistence(activePersistenceTripId);
 
-  const activeTripId = currentTripId || selectedTripId;
-  const { voteSummaries, isVoting, voteOnPlace, canVote, voteDisabledReason } = useTripVotes(activeTripId);
+  const activeTripId = activePersistenceTripId;
+  const {
+    voteSummaries,
+    voteActivity,
+    isVoting,
+    voteOnPlace,
+    canVote,
+    voteDisabledReason,
+  } = useTripVotes(activeTripId);
 
   const voteSummaryByPlaceKey = useMemo(
     () =>
@@ -140,33 +159,10 @@ const Index = () => {
     [voteSummaries],
   );
 
-  const voteInsights = useMemo<TripVoteInsights>(() => {
-    const entries: TripVoteInsight[] = bucketItems
-      .map((item) => {
-        const placeKey = item.place.originalId || item.place.id;
-        const voteSummary = voteSummaryByPlaceKey[placeKey];
-        if (!voteSummary) return null;
-
-        return {
-          placeKey,
-          placeName: item.place.name,
-          score: voteSummary.score,
-          voterCount: voteSummary.voterCount,
-        };
-      })
-      .filter((entry): entry is TripVoteInsight => Boolean(entry));
-
-    const totalVotes = entries.reduce((sum, entry) => sum + entry.voterCount, 0);
-    const ranked = [...entries].sort(
-      (a, b) => b.score - a.score || b.voterCount - a.voterCount,
-    );
-
-    return {
-      totalVotes,
-      top: ranked[0] ?? null,
-      bottom: ranked.length > 1 ? ranked[ranked.length - 1] : null,
-    };
-  }, [bucketItems, voteSummaryByPlaceKey]);
+  const voteInsights = useMemo<TripVoteInsights>(
+    () => buildTripVoteInsights(bucketItems, voteSummaryByPlaceKey, voteActivity),
+    [bucketItems, voteSummaryByPlaceKey, voteActivity],
+  );
 
   // Search State
   const [searchQuery, setSearchQuery] = useState("");
@@ -181,20 +177,42 @@ const Index = () => {
     [plannerSettings.city, plannerSettings.vibe, plannerSettings.timeWindow],
   );
 
-  const { data: trendingPlaces = [], isLoading: isTrending } = useTrendingPlaces(discoveryContext);
+  const [debouncedDiscoveryContext, setDebouncedDiscoveryContext] = useState<DiscoveryContext>(
+    discoveryContext,
+  );
+
+  const isSearchMode = debouncedQuery.length >= SEARCH_MIN_QUERY_LENGTH;
+  const shouldFetchTrending = (activeView === "public" && !isSearchMode) || bucketItems.length > 0;
+
+  const { data: trendingPlaces = [], isLoading: isTrending } = useTrendingPlaces(
+    debouncedDiscoveryContext,
+    { enabled: shouldFetchTrending },
+  );
 
   // Search debouncing
   useEffect(() => {
     const handler = setTimeout(() => {
-      setDebouncedQuery(searchQuery);
-    }, 500);
+      setDebouncedQuery(searchQuery.trim());
+    }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(handler);
   }, [searchQuery]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedDiscoveryContext(discoveryContext);
+    }, DISCOVERY_CONTEXT_DEBOUNCE_MS);
+
+    return () => clearTimeout(handler);
+  }, [discoveryContext]);
 
   const isSupabaseConfigured =
     Boolean(import.meta.env.VITE_SUPABASE_URL) &&
     Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY);
   const isAuthenticated = Boolean(authEmail);
+
+  useEffect(() => {
+    setSelectedVersionId(null);
+  }, [activePersistenceTripId]);
 
   // Keep auth status in sync for explicit save/collab CTA controls.
   useEffect(() => {
@@ -243,9 +261,8 @@ const Index = () => {
 
   const { data: searchResults = [], isLoading: isSearching } = usePlaceSearch(
     debouncedQuery,
-    discoveryContext,
+    debouncedDiscoveryContext,
   );
-  const isSearchMode = debouncedQuery.length >= 3;
   const isSidebarLoading =
     isSearching ||
     isLoadingPlaces ||
@@ -512,6 +529,7 @@ const Index = () => {
     } else {
       toast.success("Signed out.");
       setCurrentTripId(null);
+      setCurrentTripUpdatedAt(null);
     }
 
     setIsAuthActionPending(false);
@@ -565,21 +583,35 @@ const Index = () => {
   const handleSaveTrip = useCallback(async () => {
     if (bucketItems.length === 0) return;
 
-    const result = await saveTrip({
-      tripId: currentTripId,
-      name: tripName.trim() || "My Basho Plan",
-      settings: plannerSettings,
-      routeMode,
-      planScore: planner.score.overall,
-      items: bucketItems,
-    });
+    try {
+      const result = await saveTrip({
+        tripId: currentTripId,
+        expectedUpdatedAt: currentTripUpdatedAt,
+        name: tripName.trim() || "My Basho Plan",
+        settings: plannerSettings,
+        routeMode,
+        planScore: planner.score.overall,
+        items: bucketItems,
+      });
 
-    setCurrentTripId(result.id);
-    setSelectedTripId(result.id);
-    toast.success("Trip saved.");
+      setCurrentTripId(result.id);
+      setCurrentTripUpdatedAt(result.updatedAt);
+      setSelectedTripId(result.id);
+      setSelectedVersionId(null);
+      toast.success("Trip saved.");
+    } catch (error) {
+      if (error instanceof TripSaveConflictError) {
+        toast.error("Trip changed elsewhere. Load latest trip and retry your save.");
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : "Unable to save trip right now.";
+      toast.error(message);
+    }
   }, [
     bucketItems,
     currentTripId,
+    currentTripUpdatedAt,
     planner.score.overall,
     plannerSettings,
     routeMode,
@@ -594,7 +626,9 @@ const Index = () => {
     if (!loaded) return;
 
     setCurrentTripId(loaded.id);
+    setCurrentTripUpdatedAt(loaded.updatedAt);
     setSelectedTripId(loaded.id);
+    setSelectedVersionId(null);
     setTripName(loaded.name);
     setPlannerSettings(loaded.settings);
     setRouteMode(loaded.routeMode);
@@ -605,6 +639,52 @@ const Index = () => {
     setBucketOpen(true);
     setShowRoute(false);
   }, [isMobile, loadTrip, selectedTripId]);
+
+  const handleRestoreTripVersion = useCallback(async () => {
+    if (!activePersistenceTripId || !selectedVersionId) return;
+
+    try {
+      const restored = await restoreTripVersion({
+        tripId: activePersistenceTripId,
+        versionId: selectedVersionId,
+        expectedUpdatedAt: currentTripUpdatedAt,
+      });
+
+      if (!restored) {
+        toast.error("Restore point unavailable.");
+        return;
+      }
+
+      setCurrentTripId(restored.id);
+      setCurrentTripUpdatedAt(restored.updatedAt);
+      setSelectedTripId(restored.id);
+      setSelectedVersionId(null);
+      setTripName(restored.name);
+      setPlannerSettings(restored.settings);
+      setRouteMode(restored.routeMode);
+      setBucketItems(normalizeBucketOrder(restored.items));
+      setShowRoute(false);
+      if (isMobile) {
+        setSidebarOpen(false);
+      }
+      setBucketOpen(true);
+      toast.success("Trip restored from selected restore point.");
+    } catch (error) {
+      if (error instanceof TripSaveConflictError) {
+        toast.error("Trip changed elsewhere. Load latest trip and retry restore.");
+        return;
+      }
+
+      const message = error instanceof Error ? error.message : "Unable to restore this version.";
+      toast.error(message);
+    }
+  }, [
+    activePersistenceTripId,
+    currentTripUpdatedAt,
+    isMobile,
+    restoreTripVersion,
+    selectedVersionId,
+  ]);
 
   const handleOpenShareTrip = useCallback(() => {
     if (planner.stops.length === 0 || typeof window === "undefined") return;
@@ -643,7 +723,9 @@ const Index = () => {
     setBucketOpen(true);
     setShowRoute(false);
     setCurrentTripId(null);
+    setCurrentTripUpdatedAt(null);
     setSelectedTripId(null);
+    setSelectedVersionId(null);
     setIsSharedLinkView(false);
 
     if (typeof window !== "undefined") {
@@ -840,9 +922,15 @@ const Index = () => {
             onSaveTrip={handleSaveTrip}
             onLoadTrip={handleLoadSelectedTrip}
             onShareTrip={handleOpenShareTrip}
+            tripVersions={tripVersions}
+            selectedVersionId={selectedVersionId}
+            onSelectedVersionIdChange={(versionId) => setSelectedVersionId(versionId || null)}
+            onRestoreTripVersion={handleRestoreTripVersion}
             isSavingTrip={isSavingTrip}
             isLoadingTripLibrary={isLoadingTripLibrary}
             isLoadingSelectedTrip={isLoadingSelectedTrip}
+            isLoadingTripVersions={isLoadingTripVersions}
+            isRestoringTripVersion={isRestoringTripVersion}
             voteSummaryByPlaceKey={voteSummaryByPlaceKey}
             onVotePlace={canVote ? handleVotePlace : undefined}
             isVoting={isVoting}

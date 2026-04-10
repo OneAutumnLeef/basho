@@ -5,8 +5,22 @@ import {
   Place,
   PlaceCategory,
 } from '@/types/places';
+import {
+  buildPlacesCacheKey,
+  canUseGooglePlaces,
+  consumeGooglePlacesBudget,
+  getCachedPlaces,
+  getInFlightPlacesRequest,
+  markPlacesNetworkRequest,
+  normalizePlacesQuery,
+  setCachedPlaces,
+  setInFlightPlacesRequest,
+  shouldThrottlePlaces,
+} from '@/lib/places-traffic-control';
+import { canUsePlacesProxy, fetchPlacesFromProxy } from '@/lib/places-proxy-client';
 
-const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+const MIN_SEARCH_QUERY_LENGTH = 4;
+const SEARCH_CACHE_TTL_MS = 1000 * 60 * 60 * 24;
 
 const DEFAULT_DISCOVERY_CONTEXT: DiscoveryContext = {
   city: 'Bangalore',
@@ -20,8 +34,6 @@ const TIME_WINDOW_HINTS: Record<DiscoveryTimeWindow, string> = {
   evening: 'evening-friendly',
   'late-night': 'late-night friendly',
 };
-
-let placesServiceInstance: any = null;
 
 function normalizeDiscoveryContext(
   contextOverrides?: Partial<DiscoveryContext>,
@@ -41,64 +53,42 @@ function normalizeVibeTag(vibe: string): string {
   return vibe.trim().toLowerCase().replace(/\s+/g, '-');
 }
 
-function initGoogleMapsService(): Promise<any> {
-  return new Promise((resolve, reject) => {
-    if ((window as any).google?.maps?.places) {
-      if (!placesServiceInstance) {
-        placesServiceInstance = new (window as any).google.maps.places.PlacesService(document.createElement('div'));
-      }
-      return resolve(placesServiceInstance);
-    }
-    
-    const existingScript = document.getElementById('google-maps-script');
-    if (existingScript) {
-      // If script is already loading, wait for it
-      const interval = setInterval(() => {
-        if ((window as any).google?.maps?.places) {
-          clearInterval(interval);
-          placesServiceInstance = new (window as any).google.maps.places.PlacesService(document.createElement('div'));
-          resolve(placesServiceInstance);
-        }
-      }, 100);
-      return;
-    }
+async function searchWithPhoton(query: string, context: DiscoveryContext): Promise<Place[]> {
+  const response = await fetch(
+    `https://photon.komoot.io/api/?q=${encodeURIComponent(buildSearchQuery(query, context))}&limit=10`,
+  );
+  if (!response.ok) throw new Error('Photon search failed');
 
-    const script = document.createElement('script');
-    script.id = 'google-maps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_API_KEY}&libraries=places,marker&v=weekly`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => {
-      placesServiceInstance = new (window as any).google.maps.places.PlacesService(document.createElement('div'));
-      resolve(placesServiceInstance);
+  const data = await response.json();
+
+  return data.features.map((feature: any) => {
+    const props = feature.properties;
+    const addressParts = [props.street, props.city, props.state, props.country].filter(Boolean);
+    const address = addressParts.join(', ') || 'Unknown Address';
+
+    let category: PlaceCategory = 'other';
+    const osmValue = props.osm_value?.toLowerCase() || '';
+
+    if (['restaurant', 'cafe', 'bar', 'pub', 'fast_food'].includes(osmValue)) category = 'dining';
+    else if (['hotel', 'hostel', 'motel', 'guest_house'].includes(osmValue)) category = 'accommodation';
+    else if (['museum', 'gallery', 'memorial', 'monument', 'ruins', 'historic'].includes(osmValue) || props.osm_key === 'historic') category = 'historic';
+    else if (['park', 'forest', 'beach', 'nature_reserve'].includes(osmValue)) category = 'nature';
+    else if (['attraction', 'theme_park', 'zoo', 'viewpoint'].includes(osmValue)) category = 'attraction';
+    else if (['station', 'airport', 'subway', 'bus_stop'].includes(osmValue)) category = 'transport';
+
+    return {
+      id: `search-${props.osm_id || Math.random()}`,
+      originalId: props.osm_id?.toString(),
+      name: props.name || 'Unknown Place',
+      address,
+      lat: feature.geometry.coordinates[1],
+      lng: feature.geometry.coordinates[0],
+      category,
+      rating: undefined,
+      tags: [normalizeVibeTag(context.vibe), context.timeWindow],
+      createdAt: new Date().toISOString(),
     };
-    script.onerror = () => {
-      reject(new Error("Failed to load Google Maps JS SDK"));
-    };
-    document.head.appendChild(script);
   });
-}
-
-function mapGoogleTypeToCategory(types: string[]): PlaceCategory {
-  if (!types || types.length === 0) return 'other';
-  const typeMap: Record<string, PlaceCategory> = {
-    'restaurant': 'dining',
-    'cafe': 'cafe',
-    'bar': 'dining',
-    'lodging': 'accommodation',
-    'hotel': 'accommodation',
-    'museum': 'historic',
-    'park': 'nature',
-    'tourist_attraction': 'attraction',
-    'airport': 'transport',
-    'train_station': 'transport',
-    'transit_station': 'transport',
-  };
-
-  for (const t of types) {
-    if (typeMap[t]) return typeMap[t];
-  }
-  return 'other';
 }
 
 export function usePlaceSearch(
@@ -106,87 +96,66 @@ export function usePlaceSearch(
   contextOverrides?: Partial<DiscoveryContext>,
 ) {
   const context = normalizeDiscoveryContext(contextOverrides);
+  const normalizedQuery = normalizePlacesQuery(query);
+  const cacheKey = buildPlacesCacheKey('search', [
+    normalizedQuery,
+    context.city,
+    context.vibe,
+    context.timeWindow,
+  ]);
 
   return useQuery({
-    queryKey: ['placeSearch', query, context.city, context.vibe, context.timeWindow],
+    queryKey: ['placeSearch', normalizedQuery, context.city, context.vibe, context.timeWindow],
     queryFn: async (): Promise<Place[]> => {
-      if (!query || query.length < 3) return [];
-      
-      if (GOOGLE_API_KEY) {
-        const service = await initGoogleMapsService();
-        return new Promise<Place[]>((resolve, reject) => {
-          service.textSearch({ query: buildSearchQuery(query, context) }, (results: any[], status: string) => {
-            if (status !== 'OK' && status !== 'ZERO_RESULTS') {
-              console.error("Google Places Error:", status);
-              return reject(new Error(`Google Places API returned status: ${status}`));
-            }
-            if (!results) return resolve([]);
+      if (!normalizedQuery || normalizedQuery.length < MIN_SEARCH_QUERY_LENGTH) return [];
 
-            const mappedPlaces = results.map(p => {
-              let imageUrl = undefined;
-              if (p.photos && p.photos.length > 0) {
-                // Request the photo using the built-in lazy loader with max width
-                imageUrl = p.photos[0].getUrl({ maxWidth: 400 });
-              }
-
-              return {
-                id: `google-${p.place_id}`,
-                originalId: p.place_id,
-                name: p.name || 'Unknown Place',
-                address: p.formatted_address || 'Unknown Address',
-                lat: p.geometry?.location?.lat() || 0,
-                lng: p.geometry?.location?.lng() || 0,
-                category: mapGoogleTypeToCategory(p.types || []),
-                rating: p.rating,
-                imageUrl,
-                tags: [normalizeVibeTag(context.vibe), context.timeWindow],
-                createdAt: new Date().toISOString()
-              };
-            });
-            resolve(mappedPlaces);
-          });
-        });
-      } else {
-        // Fallback to Photon
-        const res = await fetch(
-          `https://photon.komoot.io/api/?q=${encodeURIComponent(buildSearchQuery(query, context))}&limit=10`,
-        );
-        if (!res.ok) throw new Error('Photon search failed');
-        
-        const data = await res.json();
-        
-        return data.features.map((f: any) => {
-          const p = f.properties;
-          const addressParts = [p.street, p.city, p.state, p.country].filter(Boolean);
-          const address = addressParts.join(', ') || 'Unknown Address';
-          
-          let category: PlaceCategory = 'other';
-          const osmValue = p.osm_value?.toLowerCase() || '';
-          
-          if (['restaurant', 'cafe', 'bar', 'pub', 'fast_food'].includes(osmValue)) category = 'dining';
-          else if (['hotel', 'hostel', 'motel', 'guest_house'].includes(osmValue)) category = 'accommodation';
-          else if (['museum', 'gallery', 'memorial', 'monument', 'ruins', 'historic'].includes(osmValue) || p.osm_key === 'historic') category = 'historic';
-          else if (['park', 'forest', 'beach', 'nature_reserve'].includes(osmValue)) category = 'nature';
-          else if (['attraction', 'theme_park', 'zoo', 'viewpoint'].includes(osmValue)) category = 'attraction';
-          else if (['station', 'airport', 'subway', 'bus_stop'].includes(osmValue)) category = 'transport';
-
-          return {
-            id: `search-${p.osm_id || Math.random()}`,
-            originalId: p.osm_id?.toString(),
-            name: p.name || 'Unknown Place',
-            address,
-            lat: f.geometry.coordinates[1],
-            lng: f.geometry.coordinates[0],
-            category,
-            rating: undefined,
-            tags: [normalizeVibeTag(context.vibe), context.timeWindow],
-            createdAt: new Date().toISOString()
-          };
-        });
+      const cachedResults = getCachedPlaces(cacheKey);
+      if (cachedResults) {
+        return cachedResults;
       }
+
+      const inFlight = getInFlightPlacesRequest(cacheKey);
+      if (inFlight) {
+        return inFlight;
+      }
+
+      const networkRequest = (async () => {
+        const shouldUseProxy =
+          canUsePlacesProxy() &&
+          canUseGooglePlaces('search') &&
+          !shouldThrottlePlaces('search');
+
+        if (shouldUseProxy) {
+          try {
+            markPlacesNetworkRequest('search');
+            consumeGooglePlacesBudget('search');
+
+            const proxyResults = await fetchPlacesFromProxy({
+              endpoint: 'search',
+              query: normalizedQuery,
+              context,
+            });
+
+            setCachedPlaces(cacheKey, proxyResults, SEARCH_CACHE_TTL_MS);
+            return proxyResults;
+          } catch (error) {
+            console.warn('Places proxy search failed, using fallback provider.', error);
+          }
+        }
+
+        const fallbackResults = await searchWithPhoton(normalizedQuery, context);
+        setCachedPlaces(cacheKey, fallbackResults, SEARCH_CACHE_TTL_MS);
+        return fallbackResults;
+      })();
+
+      return setInFlightPlacesRequest(cacheKey, networkRequest);
     },
-    enabled: query.length >= 3,
-    staleTime: 1000 * 60 * 60 * 24, // Cache heavily for 24 hours to reduce API burn
-    gcTime: 1000 * 60 * 60 * 24,
+    enabled: normalizedQuery.length >= MIN_SEARCH_QUERY_LENGTH,
+    staleTime: SEARCH_CACHE_TTL_MS,
+    gcTime: SEARCH_CACHE_TTL_MS,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    refetchOnMount: false,
+    retry: 1,
   });
 }

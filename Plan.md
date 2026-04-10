@@ -15,7 +15,7 @@ Basho turns a travel vibe into a feasible, time-aware outing plan in under a min
 - Phase 3 status: IN PROGRESS
 - Phase 4 status: IN PROGRESS
 - Phase 5 status: IN PROGRESS
-- Phase 6 status: NOT STARTED
+- Phase 6 status: IN PROGRESS
 
 ## Completed Work Log
 
@@ -361,6 +361,142 @@ Definition of done check:
 #### Validation Completed
 - [x] Production build passed after friends feature wiring.
 
+### 2026-04-10 - Sprint 6 Places API Burn Reduction (Phase 0 + Phase 1)
+
+#### Phase 6: Verification, Hardening, and Cost Controls - IN PROGRESS
+- Added shared client-side Places traffic control layer in src/lib/places-traffic-control.ts:
+	- daily request caps for search and trending (env-overridable)
+	- endpoint cooldown guards to reduce burst traffic
+	- in-flight dedupe to avoid duplicate concurrent requests
+	- persistent cached result store with TTL and pruning
+	- global kill switch support via VITE_DISABLE_LIVE_PLACES
+- Hardened src/hooks/usePlaceSearch.ts:
+	- raised min query threshold to 4 chars
+	- normalized query keying and persistent cache reuse
+	- graceful fallback to Photon when Google path is throttled/capped/unavailable
+	- disabled focus/reconnect/mount auto-refetch for this high-burn path
+- Hardened src/hooks/useTrendingPlaces.ts:
+	- added optional enabled gate to avoid unnecessary fetches
+	- added persistent cache + in-flight dedupe + cooldown + quota checks
+	- graceful fallback path retained for continuity
+- Updated src/pages/Index.tsx orchestration:
+	- increased search debounce to reduce keystroke request frequency
+	- added debounced discovery context so city typing does not spam context-bound queries
+	- gated trending fetches to public browsing / planner-needed states
+- Updated search UX copy in src/components/PlacesSidebar.tsx to reflect 4+ char behavior.
+
+Definition of done check:
+- [x] Live keystroke API burn is reduced through debounce, min-length, cooldown, and dedupe controls.
+- [x] Trending fetches are gated and cached to avoid unnecessary repeated calls.
+- [x] Shared server-side cache/proxy layer implemented for stronger multi-user dedupe and centralized rate limiting.
+
+### 2026-04-10 - Sprint 6 Places API Burn Reduction (Phase 2)
+
+#### Phase 6: Verification, Hardening, and Cost Controls - IN PROGRESS
+- Added server-side quota/cache schema in supabase/migrations/04_places_proxy_cache.sql:
+	- shared cache table for proxied Places responses
+	- centralized per-day rate counters (client + global)
+	- request log table for operational visibility
+	- atomic counter RPC function (`bump_places_rate_limit`)
+- Added Supabase Edge Function proxy in supabase/functions/places-proxy/index.ts:
+	- proxy-first Places search/trending backed by Google Places API (server key)
+	- shared cache with TTL + stale-cache fallback path
+	- centralized per-client and global daily guardrails
+	- request outcome logging for cache hits/rate-limit/upstream failures
+- Added frontend proxy client helper in src/lib/places-proxy-client.ts.
+- Rewired discovery hooks to proxy-first flow:
+	- src/hooks/usePlaceSearch.ts now calls Edge Function before Photon fallback
+	- src/hooks/useTrendingPlaces.ts now calls Edge Function before Photon fallback
+	- existing client-side dedupe/cooldown/cache controls remain in place as a first-layer shield
+- Updated README.md with deployment steps and secret/env guidance for proxy operation.
+
+Definition of done check:
+- [x] Search and trending requests route through a shared server-side cache/proxy path.
+- [x] Centralized rate-limiting is enforced at the proxy layer.
+- [x] Client retains graceful fallback behavior when proxy/upstream paths fail.
+
+### 2026-04-10 - Sprint 6 Places API Burn Reduction (Phase 3)
+
+#### Phase 6: Verification, Hardening, and Cost Controls - IN PROGRESS
+- Hardened proxy media handling in supabase/functions/places-proxy/index.ts:
+	- removed server key from generated Google media URLs
+	- now returns photo references via `mediaLinks` for client-side URL resolution
+- Hardened frontend proxy client in src/lib/places-proxy-client.ts:
+	- sanitizes Google media URLs from proxy payloads
+	- reconstructs media URLs using client-safe `VITE_GOOGLE_MAPS_API_KEY`
+	- avoids rendering broken Google media URLs when no client key exists
+- Updated README.md with explicit proxy secret-handling and Places API (New) requirements.
+
+Definition of done check:
+- [x] Server-side Places key is no longer exposed in proxy response image URLs.
+- [x] Place cards and detail imagery continue to resolve via client-safe media URL construction.
+
+### 2026-04-10 - Sprint 7 Collaboration Pulse Enhancement (Phase 4 Part 1)
+
+#### Phase 4: Persistence and Collaboration - IN PROGRESS
+- Enhanced vote analytics in src/hooks/useTripVotes.ts:
+	- now pulls `created_at` for vote events
+	- computes 24-hour activity trend (last vs previous window)
+	- exposes activity metrics alongside vote summaries
+- Added reusable vote insight utility in src/lib/vote-insights.ts:
+	- computes top and lowest scored stops
+	- computes most controversial stop (balanced up/down split)
+	- suggests unvoted stops for collaborator prompts
+- Enhanced collaboration panel in src/components/TripBucket.tsx:
+	- added 24h trend tile (rising/cooling/steady)
+	- added most controversial stop card
+	- added "no votes yet" suggestion prompt
+- Wired insight utility usage in src/pages/Index.tsx.
+- Added test coverage in src/test/vote-insights.test.ts for trend and insight computation logic.
+
+Definition of done check:
+- [x] Collaboration pulse shows trend, controversial stop, and unvoted-stop prompts.
+- [x] Vote activity and insight logic is unit-tested.
+
+### 2026-04-10 - Sprint 7 Collaboration Guardrails (Phase 4 Part 2)
+
+#### Phase 4: Persistence and Collaboration - IN PROGRESS
+- Hardened cloud trip persistence in src/hooks/useTripPersistence.ts:
+	- added optimistic concurrency guard using `updated_at` match on trip updates
+	- introduced conflict error path when stale clients attempt overwrite
+	- save responses now include `updatedAt` to maintain client-side save baseline
+- Wired conflict-safe save handling in src/pages/Index.tsx:
+	- tracks current trip `updatedAt` baseline
+	- passes expected timestamp on save
+	- shows explicit conflict toast on stale save attempts
+- Hardened vote permission handling in src/hooks/useTripVotes.ts:
+	- permission query now verifies trip accessibility, not just auth session
+	- vote mutations now block with explicit error when trip access is missing
+	- surfaced clearer disabled reason for inaccessible trips
+- Added hosted verification checklist in docs/collaboration-qa-matrix.md:
+	- multi-user vote permission scenarios (owner/collaborator/outsider/anonymous/local)
+	- concurrent-save conflict scenarios and expected outcomes
+
+Definition of done check:
+- [x] Concurrent stale cloud saves are detected and blocked before overwrite.
+- [x] Vote permission UX and mutation path both enforce trip accessibility checks.
+- [ ] Hosted multi-account QA execution still pending.
+
+### 2026-04-10 - Sprint 7 Restore Points (Phase 4 Part 3)
+
+#### Phase 4: Persistence and Collaboration - IN PROGRESS
+- Added trip version migration in supabase/migrations/05_trip_versions.sql:
+	- `trip_versions` table with snapshot JSON payloads
+	- RLS policies for owner writes and shared/owner reads
+- Extended src/hooks/useTripPersistence.ts:
+	- records restore-point snapshots on every successful save (cloud + local)
+	- exposes version history query for active trip
+	- adds restore mutation for selected version snapshots
+- Extended src/types/trips.ts with restore-point contracts.
+- Wired restore controls in UI:
+	- src/components/TripBucket.tsx now includes restore-point selector + restore action
+	- src/pages/Index.tsx now tracks selected restore point and applies restored snapshots to planner state
+
+Definition of done check:
+- [x] Save operations produce restorable snapshots for local and cloud trip flows.
+- [x] Users can restore a selected snapshot from Trip Bucket UI.
+- [ ] Hosted restore workflow QA still pending.
+
 ## Active Plan (Upcoming)
 
 ### Phase 3: Auto-Fix Engine
@@ -376,19 +512,21 @@ Definition of done:
 
 ### Phase 4: Persistence and Collaboration
 - Complete shared multi-user permission verification for voting after hosted deployment.
-- Add version history and restore points for saved trips.
-- Add vote insights panel enhancements:
+- Add version history and restore points for saved trips: DONE (snapshot history + restore control).
+- Vote insights panel enhancements: DONE
 	- most controversial stop
 	- vote trend over time
 	- no-vote suggestions for collaborators
-- Add conflict handling for concurrent edits from multiple users.
+- Add conflict handling for concurrent edits from multiple users: DONE (optimistic concurrency + stale-save guard).
 
 Definition of done:
 - [x] Saved trip restores with full schedule metadata.
 - [x] Vote insights panel exists in trip sidebar.
 - [x] Auth CTA is visible in trip UI.
+- [x] Concurrent editing stale-save conflicts are blocked in cloud save path.
+- [x] Version history restore points available in trip sidebar workflow.
 - [ ] Group voting respects permissions and works end to end.
-- [ ] Concurrent editing does not corrupt trip order or stop metadata.
+- [ ] Hosted QA confirms permission matrix and conflict scenarios across multiple accounts.
 
 ### Phase 5: Shareable Plan Card
 - Add optional read-only shared route rendering mode outside editor state.

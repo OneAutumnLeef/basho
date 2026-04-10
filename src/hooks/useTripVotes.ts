@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { TripVoteSummary, VoteOnPlaceInput } from "@/types/trips";
+import { TripVoteActivity, TripVoteSummary, VoteOnPlaceInput } from "@/types/trips";
+import { buildVoteActivity } from "@/lib/vote-insights";
 
 const LOCAL_VOTES_KEY = "basho-local-trip-votes-v1";
 
@@ -13,6 +14,23 @@ type VoteRow = {
   place_name: string | null;
   voter_user_id: string;
   vote: -1 | 1;
+  created_at: string;
+};
+
+interface TripVotesQueryResult {
+  summaries: TripVoteSummary[];
+  activity: TripVoteActivity;
+}
+
+interface VotePermissionResult {
+  userId: string | null;
+  canAccessTrip: boolean;
+}
+
+const EMPTY_VOTE_ACTIVITY: TripVoteActivity = {
+  last24Hours: 0,
+  previous24Hours: 0,
+  direction: "flat",
 };
 
 function safeReadLocalVotes(): LocalVotesStore {
@@ -81,13 +99,30 @@ export function useTripVotes(tripId: string | null) {
   const votePermissionQuery = useQuery({
     queryKey: ["trip-vote-permission", tripId],
     enabled: Boolean(tripId && !tripId.startsWith("local-")),
-    queryFn: async () => {
+    queryFn: async (): Promise<VotePermissionResult> => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
+      const userId = session?.user?.id ?? null;
+      if (!userId || !tripId) {
+        return {
+          userId,
+          canAccessTrip: false,
+        };
+      }
+
+      const { data: tripAccess, error: tripAccessError } = await supabase
+        .from("trips")
+        .select("id")
+        .eq("id", tripId)
+        .maybeSingle();
+
+      if (tripAccessError) throw tripAccessError;
+
       return {
-        userId: session?.user?.id ?? null,
+        userId,
+        canAccessTrip: Boolean(tripAccess?.id),
       };
     },
     staleTime: 1000 * 30,
@@ -96,14 +131,19 @@ export function useTripVotes(tripId: string | null) {
   const votesQuery = useQuery({
     queryKey: ["trip-votes", tripId],
     enabled: Boolean(tripId),
-    queryFn: async (): Promise<TripVoteSummary[]> => {
-      if (!tripId) return [];
+    queryFn: async (): Promise<TripVotesQueryResult> => {
+      if (!tripId) {
+        return {
+          summaries: [],
+          activity: EMPTY_VOTE_ACTIVITY,
+        };
+      }
 
       if (tripId.startsWith("local-")) {
         const localStore = safeReadLocalVotes();
         const currentUserBucket = localStore[tripId] || {};
 
-        return Object.entries(currentUserBucket).map(([placeKey, vote]) => ({
+        const summaries = Object.entries(currentUserBucket).map(([placeKey, vote]) => ({
           placeKey,
           score: vote,
           upVotes: vote > 0 ? 1 : 0,
@@ -111,17 +151,30 @@ export function useTripVotes(tripId: string | null) {
           myVote: vote,
           voterCount: 1,
         }));
+
+        return {
+          summaries,
+          activity: {
+            last24Hours: summaries.length,
+            previous24Hours: 0,
+            direction: summaries.length > 0 ? "up" : "flat",
+          },
+        };
       }
 
       const currentUserId = await getCurrentUserId();
       const { data, error } = await supabase
         .from("trip_votes")
-        .select("id,trip_id,place_key,place_name,voter_user_id,vote")
+        .select("id,trip_id,place_key,place_name,voter_user_id,vote,created_at")
         .eq("trip_id", tripId);
 
       if (error) throw error;
       const rows = (data || []) as VoteRow[];
-      return aggregateVoteRows(rows, currentUserId ?? undefined);
+
+      return {
+        summaries: aggregateVoteRows(rows, currentUserId ?? undefined),
+        activity: buildVoteActivity(rows),
+      };
     },
   });
 
@@ -146,6 +199,17 @@ export function useTripVotes(tripId: string | null) {
       const currentUserId = await getCurrentUserId();
       if (!currentUserId) {
         throw new Error("You need to sign in to vote on shared trips.");
+      }
+
+      const { data: tripAccess, error: tripAccessError } = await supabase
+        .from("trips")
+        .select("id")
+        .eq("id", input.tripId)
+        .maybeSingle();
+
+      if (tripAccessError) throw tripAccessError;
+      if (!tripAccess?.id) {
+        throw new Error("You do not have permission to vote on this trip.");
       }
 
       const { data: existing, error: existingError } = await supabase
@@ -193,12 +257,15 @@ export function useTripVotes(tripId: string | null) {
         ? "Checking vote permissions..."
         : !votePermissionQuery.data?.userId
           ? "Sign in to vote on shared trips."
+          : !votePermissionQuery.data.canAccessTrip
+            ? "You don't have access to vote on this trip."
           : null;
 
   const canVote = voteDisabledReason === null;
 
   return {
-    voteSummaries: votesQuery.data ?? [],
+    voteSummaries: votesQuery.data?.summaries ?? [],
+    voteActivity: votesQuery.data?.activity ?? EMPTY_VOTE_ACTIVITY,
     isLoadingVotes: votesQuery.isLoading,
     voteOnPlace: voteMutation.mutateAsync,
     isVoting: voteMutation.isPending,
