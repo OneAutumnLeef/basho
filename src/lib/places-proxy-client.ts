@@ -42,7 +42,7 @@ function extractGooglePhotoPath(
   if (trimmed.startsWith('places/')) {
     const normalized = trimmed
       .replace(/\?.*$/, '')
-      .replace(/\/media$/, '')
+      .replace(/(\/media)+$/, '')
       .replace(/^\/+/, '');
 
     if (!normalized.startsWith('places/')) return null;
@@ -56,7 +56,7 @@ function extractGooglePhotoPath(
     const normalizedPath = parsed.pathname
       .replace(/^\/v1\//, '')
       .replace(/^\//, '')
-      .replace(/\/media$/, '');
+      .replace(/(\/media)+$/, '');
 
     if (!normalizedPath.startsWith('places/')) return null;
 
